@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace FileHistory
 {
@@ -93,32 +94,148 @@ namespace FileHistory
             var attrs = db.GetAttributes(file.Id).OrderByDescending(m => m.BackupTime).ToList();
             if (attrs.Count <= 1) return deleted;
             var ageLimit = settings.RetentionDays > 0 ? DateTime.Now.AddDays(-settings.RetentionDays) : DateTime.MinValue;
-            var backupFileDir = db.GetFileDir(file.Id);
 
-            // i = 0（最新世代）は常に保持
+            // First pass: mark candidates for deletion based on age and count (latest kept)
+            var canDelete = new bool[attrs.Count];
+            for (int i = 0; i < attrs.Count; i++) canDelete[i] = false;
+
             for (int i = 1; i < attrs.Count; i++)
             {
                 if (token.IsCancellationRequested) break;
-
                 var expiredByAge = settings.RetentionDays > 0 && attrs[i].BackupTime < ageLimit;
                 var expiredByCount = settings.MaxGenerations > 0 && i >= settings.MaxGenerations;
-                if (!expiredByAge && !expiredByCount) continue;
+                if (expiredByAge || expiredByCount) canDelete[i] = true;
+            }
 
-                var backupPath = BackupDb.BackupFileName(settings.DataDir, Path.Combine(backupFileDir, file.Name), attrs[i].BackupTime);
-                try
+            // Second pass: ensure we don't delete a checkout while keeping dependent deltas
+            // For each checkout marked deletable, verify all dependent deltas are also marked deletable; otherwise skip deleting the checkout
+            for (int i = 0; i < attrs.Count; i++)
+            {
+                if (!canDelete[i]) continue;
+                var attr = attrs[i];
+                if (attr.Type == "checkout")
                 {
-                    logger.LogInformation("Retention delete {path}", backupPath);
-                    if (File.Exists(backupPath))
-                        File.Delete(backupPath);
-                    db.DeleteAttribute(attrs[i].Id);
-                    deleted++;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogDebug("Exception caught in deleting {path}: {ex}", backupPath, ex.ToString());
+                    // find dependent deltas
+                    var deps = attrs.Where((a, idx) => a.BaseAttributeId == attr.Id && a.Type == "delta").ToList();
+                    if (deps.Count > 0)
+                    {
+                        // if any dependent delta is NOT deletable, we must not delete this checkout
+                        var anyNonDeletable = deps.Any(d => {
+                            var idx = attrs.FindIndex(x => x.Id == d.Id);
+                            return idx >= 0 && !canDelete[idx];
+                        });
+                        if (anyNonDeletable)
+                        {
+                            // skip deleting this checkout
+                            canDelete[i] = false;
+                        }
+                    }
                 }
             }
-            return deleted;
+
+            // Final pass: perform deletion atomically using move-to-trash then DB removal with rollback on failure
+            var toDelete = new List<(AttributeDbEntry Attr, string OriginalPath)>();
+            for (int i = 0; i < attrs.Count; i++)
+            {
+                if (!canDelete[i]) continue;
+                var a = attrs[i];
+                string originalPath = null;
+                if (!string.IsNullOrEmpty(a.StoredFileName))
+                {
+                    originalPath = Path.Combine(settings.DataDir, a.StoredFileName);
+                }
+                else
+                {
+                    try
+                    {
+                        var backupFileDir = db.GetFileDir(file.Id);
+                        originalPath = BackupDb.BackupFileName(settings.DataDir, Path.Combine(backupFileDir, file.Name), a.BackupTime);
+                    }
+                    catch
+                    {
+                        originalPath = null;
+                    }
+                }
+                toDelete.Add((a, originalPath));
+            }
+
+            if (toDelete.Count == 0) return deleted;
+
+            var movedFiles = new List<(string From, string To)>();
+            var trashRoot = Path.Combine(settings.DataDir, ".trash");
+            Directory.CreateDirectory(trashRoot);
+            var trashDir = Path.Combine(trashRoot, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(trashDir);
+
+            try
+            {
+                // Move files to trash (with cross-volume fallback: copy+delete)
+                foreach (var item in toDelete)
+                {
+                    if (token.IsCancellationRequested) break;
+                    var path = item.OriginalPath;
+                    if (string.IsNullOrEmpty(path) || !File.Exists(path)) continue;
+                    var dest = Path.Combine(trashDir, Path.GetFileName(path));
+                    logger.LogInformation("Retention move to trash {from} -> {to}", path, dest);
+                    try
+                    {
+                        File.Move(path, dest);
+                    }
+                    catch (IOException)
+                    {
+                        // Possibly cross-volume; fallback to copy+delete
+                        File.Copy(path, dest, overwrite: true);
+                        File.Delete(path);
+                    }
+                    movedFiles.Add((path, dest));
+                }
+
+                // Delete attributes from DB, keep backup of attributes to restore on failure
+                var deletedAttrs = new List<AttributeDbEntry>();
+                foreach (var item in toDelete)
+                {
+                    if (token.IsCancellationRequested) break;
+                    var ok = db.DeleteAttribute(item.Attr.Id);
+                    if (!ok)
+                    {
+                        // rollback: restore moved files
+                        foreach (var m in movedFiles)
+                        {
+                            try { if (File.Exists(m.To)) File.Move(m.To, m.From); } catch { }
+                        }
+                        return deleted; // nothing committed
+                    }
+                    else
+                    {
+                        deletedAttrs.Add(item.Attr);
+                        deleted++;
+                    }
+                }
+
+                // All deletions succeeded: remove trash directory
+                try
+                {
+                    foreach (var m in movedFiles)
+                    {
+                        if (File.Exists(m.To)) File.Delete(m.To);
+                    }
+                    // attempt to remove empty trash dir
+                    Directory.Delete(trashDir, false);
+                }
+                catch { }
+
+                return deleted;
+            }
+            catch (Exception ex)
+            {
+                // On any exception, attempt to rollback moved files
+                foreach (var m in movedFiles)
+                {
+                    try { if (File.Exists(m.To)) File.Move(m.To, m.From); } catch { }
+                }
+                logger.LogDebug("Exception caught in retention deletion: {ex}", ex.ToString());
+                return deleted;
+            }
         }
 
         public void Dispose()

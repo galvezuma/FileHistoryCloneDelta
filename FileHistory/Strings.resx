@@ -192,6 +192,15 @@ Settings file: {2}</value>
   <data name="Settings_RestartPrompt" xml:space="preserve">
     <value>Settings saved. Restart FileHistoryClone now to apply the changes?</value>
   </data>
+  <data name="Settings_LangEnglish" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="Settings_LangJapanese" xml:space="preserve">
+    <value>日本語</value>
+  </data>
+  <data name="Settings_LangSpanish" xml:space="preserve">
+    <value>Español</value>
+  </data>
   <data name="MainForm_Title" xml:space="preserve">
     <value>FileHistoryClone - Restore Files</value>
   </data>

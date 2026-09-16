@@ -74,7 +74,7 @@ namespace FileHistory
                 using var sf = new SettingsForm(ConfigPath);
                 if (sf.ShowDialog() == DialogResult.OK)
                 {
-                    if (MessageBox.Show(Strings.Get("Settings_RestartPrompt"), "FileHistoryClone",
+                    if (MessageBox.Show(Strings.Get("Settings_RestartPrompt"), Strings.Get("MainForm_Title"),
                         MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                         RestartApp();
                 }
@@ -141,6 +141,8 @@ namespace FileHistory
                     var services = new ServiceCollection();
                     services.AddSingleton(configuration);
                     services.AddSingleton(settings);
+                    // DeltaService registration via factory to pass settings flag and logger
+                    services.AddTransient<IDeltaService>(sp => new DeltaService(sp.GetRequiredService<ILogger<DeltaService>>(), sp.GetRequiredService<Settings>().AllowOctodiffFallback));
                     services.AddTransient<MainForm>();
                     services.AddSingleton<Crawler>();
                     services.AddSingleton<DirectoryWatcher>();

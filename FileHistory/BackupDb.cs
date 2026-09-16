@@ -14,9 +14,14 @@ namespace FileHistory
     public interface IBackupDb
     {
         AttributeDbEntry GetLatestAttribute(int fileId);
+        AttributeDbEntry GetLatestCheckoutAttribute(int fileId);
+        AttributeDbEntry GetAttributeById(int id);
+        int GetDeltaCountForBase(int baseAttributeId);
         AttributeDbEntry GetAttribute(int fileId, DateTime creationTime, DateTime lastWriteTime, long size);
         FileDbEntry GetFile(string fullPath, DirectoryDbEntry entry = null);
         void InsertAttribute(int fileId, DateTime backupTime, DateTime creationTime, DateTime lastWriteTime, DateTime lastAccessTime, long size);
+        void InsertAttributeExtended(int fileId, DateTime backupTime, DateTime creationTime, DateTime lastWriteTime, DateTime lastAccessTime, long size,
+            string type, string storedFileName, string checksum, int? baseAttributeId, int deltaIndex, DateTimeOffset createdAt);
         bool DeleteAttribute(int attributeId);
         FileDbEntry InsertFile(string fullPath);
         Task<int> FileCount(CancellationToken token);
@@ -73,6 +78,10 @@ namespace FileHistory
             _db = new LiteDatabase(_settings.BackupDb, mapper);
             _fileAttributeDbEntries = _db.GetCollection<AttributeDbEntry>("AttributeDbEntries");
             _fileAttributeDbEntries.EnsureIndex(m => m.FileId);
+            // índices adicionales para consultas por tipo, nombre almacenado y base
+            _fileAttributeDbEntries.EnsureIndex(m => m.Type);
+            _fileAttributeDbEntries.EnsureIndex(m => m.StoredFileName);
+            _fileAttributeDbEntries.EnsureIndex(m => m.BaseAttributeId);
             _fileDbEntries = _db.GetCollection<FileDbEntry>("FileDbEntries");
             _fileDbEntries.EnsureIndex(m => m.DirectoryId);
             _directoryDbEntries = _db.GetCollection<DirectoryDbEntry>("DirectoryDbEntries");
@@ -167,7 +176,7 @@ namespace FileHistory
             try
             {
                 _logger?.LogTrace("Enter: {MethodName}, fileId = {fileId}, backupTime = {backupTime}, creationTime = {creationTime}, " +
-                    "lastWriteTime = {lastWriteTime}, lastAccessTime = {lastAccessTime}, lsize = {size}", 
+                    "lastWriteTime = {lastWriteTime}, lastAccessTime = {lastAccessTime}, lsize = {size}",
                     System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? "",
                     fileId, backupTime, creationTime, lastWriteTime, lastAccessTime, size);
                 _fileAttributeDbEntries.Insert(new AttributeDbEntry
@@ -178,6 +187,47 @@ namespace FileHistory
                     LastWriteTime = lastWriteTime,
                     LastAccessTime = lastAccessTime,
                     Size = size,
+                    // valores por defecto para el nuevo esquema
+                    Type = "checkout",
+                    StoredFileName = string.Empty,
+                    Checksum = string.Empty,
+                    BaseAttributeId = null,
+                    DeltaIndex = 0,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError("Exception caught: {ex}", ex.ToString());
+            }
+            finally
+            {
+                _logger?.LogTrace("Leave: {MethodName}", System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? "");
+            }
+        }
+        /// <summary>
+        /// Inserta un AttributeDbEntry con campos extendidos para el formato .fhc
+        /// </summary>
+        public void InsertAttributeExtended(int fileId, DateTime backupTime, DateTime creationTime, DateTime lastWriteTime, DateTime lastAccessTime, long size,
+            string type, string storedFileName, string checksum, int? baseAttributeId, int deltaIndex, DateTimeOffset createdAt)
+        {
+            try
+            {
+                _logger?.LogTrace("Enter: {MethodName}, fileId = {fileId}, backupTime = {backupTime}", System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? "", fileId, backupTime);
+                _fileAttributeDbEntries.Insert(new AttributeDbEntry
+                {
+                    FileId = fileId,
+                    BackupTime = backupTime,
+                    CreationTime = creationTime,
+                    LastWriteTime = lastWriteTime,
+                    LastAccessTime = lastAccessTime,
+                    Size = size,
+                    Type = type,
+                    StoredFileName = storedFileName,
+                    Checksum = checksum,
+                    BaseAttributeId = baseAttributeId,
+                    DeltaIndex = deltaIndex,
+                    CreatedAt = createdAt,
                 });
             }
             catch (Exception ex)
@@ -223,6 +273,21 @@ namespace FileHistory
         public AttributeDbEntry GetLatestAttribute(int fileId)
         {
             return GetAttributes(fileId).OrderByDescending(m => m.LastUpdate).FirstOrDefault();
+        }
+
+        public AttributeDbEntry GetLatestCheckoutAttribute(int fileId)
+        {
+            return _fileAttributeDbEntries.Find(m => m.FileId == fileId && m.Type == "checkout").OrderByDescending(m => m.CreatedAt).FirstOrDefault();
+        }
+
+        public AttributeDbEntry GetAttributeById(int id)
+        {
+            return _fileAttributeDbEntries.FindById(id);
+        }
+
+        public int GetDeltaCountForBase(int baseAttributeId)
+        {
+            return _fileAttributeDbEntries.Find(m => m.BaseAttributeId == baseAttributeId && m.Type == "delta").Count();
         }
 
         public List<AttributeDbEntry> GetAttributes(int fileId)
@@ -515,6 +580,13 @@ namespace FileHistory
         public int Id { get; set; }
         public int FileId { get; set; }
         public DateTime BackupTime { get; set; }
+        // Nuevo esquema para backups delta/.fhc
+        public string Type { get; set; } = "checkout"; // "checkout" | "delta"
+        public int? BaseAttributeId { get; set; }
+        public string Checksum { get; set; } = string.Empty; // SHA-256
+        public string StoredFileName { get; set; } = string.Empty; // nombre del fichero .fhc en disco
+        public int DeltaIndex { get; set; } = 0;
+        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
         public AttributeDbEntry() { }
         public AttributeDbEntry(AttributeFileEntry fileEntry)
@@ -523,6 +595,12 @@ namespace FileHistory
             this.LastWriteTime = fileEntry.LastWriteTime;
             this.LastAccessTime = fileEntry.LastAccessTime;
             this.Size = fileEntry.Size;
+            this.Type = "checkout";
+            this.Checksum = string.Empty;
+            this.StoredFileName = string.Empty;
+            this.BaseAttributeId = null;
+            this.DeltaIndex = 0;
+            this.CreatedAt = DateTimeOffset.UtcNow;
         }
     }
 
