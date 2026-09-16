@@ -23,6 +23,9 @@ namespace FileHistory
         TextBox _excludeBox;
         NumericUpDown _defaultInterval;
         NumericUpDown _maxGenerations, _retentionDays;
+        NumericUpDown _maxDeltasBeforeCheckout;
+        NumericUpDown _deltaSizeThresholdPercent;
+        CheckBox _allowOctodiffFallback;
         ComboBox _language;
 
         // IncludeDir は Dir と任意の BackupInterval を保持。
@@ -165,13 +168,23 @@ namespace FileHistory
             _retentionDays = MakeNumeric(0, int.MaxValue);
             AddNumericRow(tlp, ref row, "Settings_MaxGenerations", _maxGenerations, Tip, "Settings_Tip_MaxGenerations");
             AddNumericRow(tlp, ref row, "Settings_RetentionDays", _retentionDays, Tip, "Settings_Tip_RetentionDays");
+            _maxDeltasBeforeCheckout = MakeNumeric(0, int.MaxValue);
+            _deltaSizeThresholdPercent = MakeNumeric(0, 100);
+            AddNumericRow(tlp, ref row, "Settings_MaxDeltasBeforeCheckout", _maxDeltasBeforeCheckout, Tip, "Settings_Tip_MaxDeltasBeforeCheckout");
+            AddNumericRow(tlp, ref row, "Settings_DeltaSizeThresholdPercent", _deltaSizeThresholdPercent, Tip, "Settings_Tip_DeltaSizeThresholdPercent");
+            // Octodiff fallback checkbox
+            _allowOctodiffFallback = new CheckBox { Checked = true, Anchor = AnchorStyles.Left };
+            var l = new Label { Text = Strings.Get("Settings_AllowOctodiffFallback"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 8, 0) };
+            tlp.Controls.Add(l, 0, row);
+            tlp.Controls.Add(_allowOctodiffFallback, 1, row); row++;
 
             // --- 言語 ---
             Header("Settings_Language");
             _language = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left, Width = 200, Margin = new Padding(0, 2, 0, 2) };
             _language.Items.Add(Strings.Get("Settings_LangAuto")); // index 0 -> ""
-            _language.Items.Add("English");                        // index 1 -> "en"
-            _language.Items.Add("日本語");                          // index 2 -> "ja"
+            _language.Items.Add(Strings.Get("Settings_LangEnglish"));                        // index 1 -> "en"
+            _language.Items.Add(Strings.Get("Settings_LangJapanese"));                          // index 2 -> "ja"
+            _language.Items.Add(Strings.Get("Settings_LangSpanish"));                        // index 3 -> "es"
             var langLabel = FieldLabel("Settings_UiLanguage");
             tlp.Controls.Add(langLabel, 0, row);
             tlp.Controls.Add(_language, 1, row); row++;
@@ -286,12 +299,16 @@ namespace FileHistory
                 _defaultInterval.Value = ClampToNumeric(_defaultInterval, d.DefaultBackupInterval);
                 _maxGenerations.Value = ClampToNumeric(_maxGenerations, d.MaxGenerations);
                 _retentionDays.Value = ClampToNumeric(_retentionDays, d.RetentionDays);
+                _maxDeltasBeforeCheckout.Value = ClampToNumeric(_maxDeltasBeforeCheckout, d.MaxDeltasBeforeCheckout);
+                _deltaSizeThresholdPercent.Value = ClampToNumeric(_deltaSizeThresholdPercent, d.DeltaSizeThresholdPercent);
+                _allowOctodiffFallback.Checked = d.AllowOctodiffFallback;
                 _retentionScanLoaded = d.RetentionScanInterval;
                 _idleTimerLoaded = d.CrawlingIdleTimer;
                 _crawlIntervalLoaded = d.CrawlingInterval;
 
                 _language.SelectedIndex = (d.Language ?? "").Equals("en", StringComparison.OrdinalIgnoreCase) ? 1
-                    : (d.Language ?? "").Equals("ja", StringComparison.OrdinalIgnoreCase) ? 2 : 0;
+                    : (d.Language ?? "").Equals("ja", StringComparison.OrdinalIgnoreCase) ? 2
+                    : (d.Language ?? "").Equals("es", StringComparison.OrdinalIgnoreCase) ? 3 : 0;
 
                 _includeDirs.Clear();
                 _includeDirs.AddRange(d.IncludeDirs);
@@ -331,9 +348,12 @@ namespace FileHistory
                     CrawlingIdleTimer = _idleTimerLoaded,
                     CrawlingInterval = _crawlIntervalLoaded,
                     MaxGenerations = (int)_maxGenerations.Value,
+                    MaxDeltasBeforeCheckout = (int)_maxDeltasBeforeCheckout.Value,
+                    DeltaSizeThresholdPercent = (double)_deltaSizeThresholdPercent.Value,
+                    AllowOctodiffFallback = _allowOctodiffFallback.Checked,
                     RetentionDays = (double)_retentionDays.Value,
                     RetentionScanInterval = _retentionScanLoaded,
-                    Language = _language.SelectedIndex == 1 ? "en" : _language.SelectedIndex == 2 ? "ja" : "",
+                    Language = _language.SelectedIndex == 1 ? "en" : _language.SelectedIndex == 2 ? "ja" : _language.SelectedIndex == 3 ? "es" : "",
                     IncludeDirs = _includeDirs.ToList(),
                     ExcludeDirs = _excludeBox.Lines.Select(l => l.Trim()).Where(l => l.Length > 0).ToList(),
                 };

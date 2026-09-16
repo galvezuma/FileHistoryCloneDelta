@@ -61,7 +61,7 @@
             this.label1.Name = "label1";
             this.label1.Size = new System.Drawing.Size(141, 15);
             this.label1.TabIndex = 1;
-            this.label1.Text = "バックアップ済みファイル数：";
+            this.label1.Text = Strings.Get("MainForm_BackedUpFileCount");
             // 
             // fileCount
             // 
@@ -148,7 +148,7 @@
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(140, 15);
             this.label2.TabIndex = 5;
-            this.label2.Text = "クローリング済みファイル数：";
+            this.label2.Text = Strings.Get("MainForm_CrawledFileCount");
             //
             // menuStrip1
             //
@@ -168,27 +168,27 @@
             this.menuItemCleanup});
             this.menuTools.Name = "menuTools";
             this.menuTools.Size = new System.Drawing.Size(60, 20);
-            this.menuTools.Text = "ツール(&T)";
+            this.menuTools.Text = Strings.Get("MainForm_MenuTools");
             //
             // menuItemSettings
             //
             this.menuItemSettings.Name = "menuItemSettings";
             this.menuItemSettings.Size = new System.Drawing.Size(220, 22);
-            this.menuItemSettings.Text = "設定(&S)...";
+            this.menuItemSettings.Text = Strings.Get("MainForm_MenuSettings");
             this.menuItemSettings.Click += new System.EventHandler(this.menuItemSettings_Click);
             //
             // menuItemOpenConfig
             //
             this.menuItemOpenConfig.Name = "menuItemOpenConfig";
             this.menuItemOpenConfig.Size = new System.Drawing.Size(220, 22);
-            this.menuItemOpenConfig.Text = "設定ファイルの場所を開く(&O)";
+            this.menuItemOpenConfig.Text = Strings.Get("MainForm_MenuOpenConfig");
             this.menuItemOpenConfig.Click += new System.EventHandler(this.menuItemOpenConfig_Click);
             //
             // menuItemCleanup
             //
             this.menuItemCleanup.Name = "menuItemCleanup";
             this.menuItemCleanup.Size = new System.Drawing.Size(220, 22);
-            this.menuItemCleanup.Text = "バックアップ整理(&C)...";
+            this.menuItemCleanup.Text = Strings.Get("MainForm_MenuCleanup");
             this.menuItemCleanup.Click += new System.EventHandler(this.menuItemCleanup_Click);
             //
             // menuHelp
@@ -197,13 +197,13 @@
             this.menuItemAbout});
             this.menuHelp.Name = "menuHelp";
             this.menuHelp.Size = new System.Drawing.Size(65, 20);
-            this.menuHelp.Text = "ヘルプ(&H)";
+            this.menuHelp.Text = Strings.Get("MainForm_MenuHelp");
             //
             // menuItemAbout
             //
             this.menuItemAbout.Name = "menuItemAbout";
             this.menuItemAbout.Size = new System.Drawing.Size(180, 22);
-            this.menuItemAbout.Text = "バージョン情報(&A)...";
+            this.menuItemAbout.Text = Strings.Get("MainForm_MenuAbout");
             this.menuItemAbout.Click += new System.EventHandler(this.menuItemAbout_Click);
             //
             // MainForm
@@ -222,7 +222,7 @@
             this.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
             this.MinimumSize = new System.Drawing.Size(1132, 521);
             this.Name = "MainForm";
-            this.Text = "FileHistory ファイル復元";
+            this.Text = Strings.Get("MainForm_Title");
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
             this.Load += new System.EventHandler(this.MainForm_Load);
             this.splitContainer.Panel1.ResumeLayout(false);

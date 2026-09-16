@@ -18,6 +18,9 @@ namespace FileHistory
         public double CrawlingIdleTimer { get; set; } = 60;
         public double CrawlingInterval { get; set; } = 86400;
         public int MaxGenerations { get; set; } = 0;
+        public int MaxDeltasBeforeCheckout { get; set; } = 10;
+        public double DeltaSizeThresholdPercent { get; set; } = 50.0;
+        public bool AllowOctodiffFallback { get; set; } = true;
         public double RetentionDays { get; set; } = 0;
         public double RetentionScanInterval { get; set; } = 86400;
         public string Language { get; set; } = "";
@@ -60,6 +63,9 @@ namespace FileHistory
             data.CrawlingIdleTimer = GetDouble(settings, "CrawlingIdleTimer", data.CrawlingIdleTimer);
             data.CrawlingInterval = GetDouble(settings, "CrawlingInterval", data.CrawlingInterval);
             data.MaxGenerations = (int)GetDouble(settings, "MaxGenerations", data.MaxGenerations);
+            data.MaxDeltasBeforeCheckout = (int)GetDouble(settings, "MaxDeltasBeforeCheckout", data.MaxDeltasBeforeCheckout);
+            data.DeltaSizeThresholdPercent = GetDouble(settings, "DeltaSizeThresholdPercent", data.DeltaSizeThresholdPercent);
+            data.AllowOctodiffFallback = (bool?)(settings["AllowOctodiffFallback"]?.GetValue<bool>()) ?? data.AllowOctodiffFallback;
             data.RetentionDays = GetDouble(settings, "RetentionDays", data.RetentionDays);
             data.RetentionScanInterval = GetDouble(settings, "RetentionScanInterval", data.RetentionScanInterval);
             data.Language = GetString(settings, "Language", data.Language);
@@ -100,6 +106,9 @@ namespace FileHistory
             settings["CrawlingIdleTimer"] = data.CrawlingIdleTimer;
             settings["CrawlingInterval"] = data.CrawlingInterval;
             settings["MaxGenerations"] = data.MaxGenerations;
+            settings["MaxDeltasBeforeCheckout"] = data.MaxDeltasBeforeCheckout;
+            settings["DeltaSizeThresholdPercent"] = data.DeltaSizeThresholdPercent;
+            settings["AllowOctodiffFallback"] = data.AllowOctodiffFallback;
             settings["RetentionDays"] = data.RetentionDays;
             settings["RetentionScanInterval"] = data.RetentionScanInterval;
             settings["Language"] = data.Language ?? "";

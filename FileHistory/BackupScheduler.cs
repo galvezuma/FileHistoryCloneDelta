@@ -21,6 +21,7 @@ namespace FileHistory
         // DI
         Settings _settings { get; set; }
         ILogger _logger { get; set; }
+        readonly ILoggerFactory _loggerFactory;
         IBackupDb _db { get; set; }
 
         // Task Schedule
@@ -51,6 +52,7 @@ namespace FileHistory
         public BackupScheduler(Settings settings, ILoggerFactory loggerFactory, IBackupDb db)
         {
             _settings = settings;
+            _loggerFactory = loggerFactory;
             _logger = loggerFactory.CreateLogger<BackupScheduler>();
             _db = db;
 
@@ -376,22 +378,165 @@ namespace FileHistory
             Directory.CreateDirectory(Path.GetDirectoryName(backupFile));
             try
             {
-                using (var infs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var outfs = new FileStream(backupFile, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    // GetAwaiter().GetResult()で例外をAggregateExceptionに包まず伝播させる
-                    // (下のcatchのFileNotFoundException判定を機能させるため)
-                    infs.CopyToAsync(outfs, token).GetAwaiter().GetResult();
-                }
+                // Generar paquete .fhc usando DeltaService + FhcPackage
+                var fhcPath = Path.ChangeExtension(backupFile, ".fhc");
+                Directory.CreateDirectory(Path.GetDirectoryName(fhcPath));
 
-                // コピー先タイムスタンプ設定
-                File.SetCreationTime(backupFile, fileAttr.CreationTime);
-                File.SetLastWriteTime(backupFile, fileAttr.LastWriteTime);
-                File.SetLastAccessTime(backupFile, fileAttr.LastAccessTime);
-
-                // DB追加
+                // Decide si crear checkout o delta
                 if (dbFile == null) dbFile = _db.InsertFile(file);
-                _db.InsertAttribute(dbFile.Id, now, fileAttr.CreationTime, fileAttr.LastWriteTime, fileAttr.LastAccessTime, fileAttr.Size);
+
+                using (var deltaService = new DeltaService(_loggerFactory.CreateLogger<DeltaService>(), _settings.AllowOctodiffFallback))
+                using (var infs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    // Calcular checksum del fichero nuevo (SHA-256)
+                    var newFileSha = deltaService.ComputeSha256Async(infs, token).GetAwaiter().GetResult();
+                    if (infs.CanSeek) infs.Seek(0, SeekOrigin.Begin);
+
+                    // Buscar último checkout conocido para este fichero
+                    var lastCheckout = _db.GetLatestCheckoutAttribute(dbFile.Id);
+
+                    bool forceCheckout = false;
+                    if (lastCheckout == null)
+                        forceCheckout = true;
+                    else
+                    {
+                        // Verificar que el archivo base existe en disco
+                        var basePath = Path.Combine(_settings.DataDir, lastCheckout.StoredFileName ?? "");
+                        if (string.IsNullOrEmpty(lastCheckout.StoredFileName) || !File.Exists(basePath))
+                            forceCheckout = true;
+                    }
+
+                    // Si forzamos checkout o la política lo requiere -> crear checkout
+                    if (forceCheckout)
+                    {
+                        Stream payload = null;
+                        try
+                        {
+                            payload = deltaService.CreateDeltaAsync(Stream.Null, infs, token).GetAwaiter().GetResult();
+                            if (payload.CanSeek) payload.Seek(0, SeekOrigin.Begin);
+
+                            var metadata = new FhcMetadata
+                            {
+                                Type = "checkout",
+                                BaseBackupId = null,
+                                Sha256 = newFileSha,
+                                OriginalFileName = Path.GetFileName(file),
+                                OriginalSize = fileAttr.Size,
+                                DeltaIndex = 0,
+                                CreatedAt = DateTimeOffset.UtcNow,
+                                FormatVersion = 1,
+                            };
+
+                            using var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                            FhcPackage.CreatePackageAsync(payload, metadata, outfs, token).GetAwaiter().GetResult();
+
+                            var storedRelative = Path.GetRelativePath(_settings.DataDir, fhcPath);
+                            _db.InsertAttributeExtended(dbFile.Id, now, fileAttr.CreationTime, fileAttr.LastWriteTime, fileAttr.LastAccessTime, fileAttr.Size,
+                                metadata.Type, storedRelative, metadata.Sha256, null, metadata.DeltaIndex, metadata.CreatedAt);
+                        }
+                        finally { payload?.Dispose(); }
+                    }
+                    else
+                    {
+                        // Intentar crear delta respecto al lastCheckout
+                        var basePath = Path.Combine(_settings.DataDir, lastCheckout.StoredFileName);
+                        Stream basePayload = null;
+                        Stream deltaStream = null;
+                        try
+                        {
+                            // Reconstruir el estado más reciente a partir del checkout + todos sus deltas aplicados
+                            using (var baseFhc = new FileStream(basePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                            {
+                                var extracted = FhcPackage.ExtractPackageAsync(baseFhc, token).GetAwaiter().GetResult();
+                                basePayload = extracted.Payload; // MemoryStream con contenido del checkout
+                            }
+
+                            // Aplicar en orden todos los deltas que referencian a este checkout
+                            var allAttrs = _db.GetAttributes(dbFile.Id);
+                            var deltasForBase = allAttrs.Where(a => a.BaseAttributeId == lastCheckout.Id && a.Type == "delta")
+                                                       .OrderBy(a => a.DeltaIndex)
+                                                       .ToList();
+
+                            foreach (var dAttr in deltasForBase)
+                            {
+                                // Abrir paquete .fhc del delta y extraer payload
+                                var dPath = Path.Combine(_settings.DataDir, dAttr.StoredFileName);
+                                using var dFhc = new FileStream(dPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                                var extractedDelta = FhcPackage.ExtractPackageAsync(dFhc, token).GetAwaiter().GetResult();
+                                using var deltaPayload = extractedDelta.Payload; // MemoryStream
+
+                                // Aplicar deltaPayload sobre la base actual
+                                var newBase = deltaService.ApplyDeltaAsync(basePayload, deltaPayload, token).GetAwaiter().GetResult();
+                                basePayload.Dispose();
+                                basePayload = newBase; // MemoryStream resultante
+                                if (basePayload.CanSeek) basePayload.Seek(0, SeekOrigin.Begin);
+                            }
+
+                            // Crear delta entre el estado reconstruido (basePayload) y el fichero actual (infs)
+                            if (basePayload.CanSeek) basePayload.Seek(0, SeekOrigin.Begin);
+                            if (infs.CanSeek) infs.Seek(0, SeekOrigin.Begin);
+                            deltaStream = deltaService.CreateDeltaAsync(basePayload, infs, token).GetAwaiter().GetResult();
+                            if (deltaStream.CanSeek) deltaStream.Seek(0, SeekOrigin.Begin);
+
+                            var deltaSize = deltaStream.CanSeek ? deltaStream.Length : -1;
+                            var thresholdBytes = (long)Math.Ceiling(_settings.DeltaSizeThresholdPercent / 100.0 * fileAttr.Size);
+
+                            if (deltaSize < 0 || deltaSize > thresholdBytes || _db.GetDeltaCountForBase(lastCheckout.Id) >= _settings.MaxDeltasBeforeCheckout)
+                            {
+                                // Delta no eficiente -> crear checkout en su lugar
+                                deltaStream.Dispose(); deltaStream = null;
+                                basePayload.Dispose(); basePayload = null;
+                                if (infs.CanSeek) infs.Seek(0, SeekOrigin.Begin);
+                                var payload = deltaService.CreateDeltaAsync(Stream.Null, infs, token).GetAwaiter().GetResult();
+                                if (payload.CanSeek) payload.Seek(0, SeekOrigin.Begin);
+                                var metadata = new FhcMetadata
+                                {
+                                    Type = "checkout",
+                                    BaseBackupId = null,
+                                    Sha256 = newFileSha,
+                                    OriginalFileName = Path.GetFileName(file),
+                                    OriginalSize = fileAttr.Size,
+                                    DeltaIndex = 0,
+                                    CreatedAt = DateTimeOffset.UtcNow,
+                                    FormatVersion = 1,
+                                };
+                                using var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                                FhcPackage.CreatePackageAsync(payload, metadata, outfs, token).GetAwaiter().GetResult();
+                                var storedRelative = Path.GetRelativePath(_settings.DataDir, fhcPath);
+                                _db.InsertAttributeExtended(dbFile.Id, now, fileAttr.CreationTime, fileAttr.LastWriteTime, fileAttr.LastAccessTime, fileAttr.Size,
+                                    metadata.Type, storedRelative, metadata.Sha256, null, metadata.DeltaIndex, metadata.CreatedAt);
+                            }
+                            else
+                            {
+                                // Guardar delta como paquete .fhc
+                                var deltaIndex = _db.GetDeltaCountForBase(lastCheckout.Id) + 1;
+                                var metadata = new FhcMetadata
+                                {
+                                    Type = "delta",
+                                    BaseBackupId = lastCheckout.Id.ToString(),
+                                    Sha256 = newFileSha,
+                                    OriginalFileName = Path.GetFileName(file),
+                                    OriginalSize = fileAttr.Size,
+                                    DeltaIndex = deltaIndex,
+                                    CreatedAt = DateTimeOffset.UtcNow,
+                                    FormatVersion = 1,
+                                };
+
+                                using var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                                FhcPackage.CreatePackageAsync(deltaStream, metadata, outfs, token).GetAwaiter().GetResult();
+
+                                var storedRelative = Path.GetRelativePath(_settings.DataDir, fhcPath);
+                                _db.InsertAttributeExtended(dbFile.Id, now, fileAttr.CreationTime, fileAttr.LastWriteTime, fileAttr.LastAccessTime, fileAttr.Size,
+                                    metadata.Type, storedRelative, metadata.Sha256, lastCheckout.Id, metadata.DeltaIndex, metadata.CreatedAt);
+                            }
+                        }
+                        finally
+                        {
+                            basePayload?.Dispose();
+                            deltaStream?.Dispose();
+                        }
+                    }
+                }
 
                 // 保持ポリシーをこのファイルへ即時適用(失敗してもバックアップ自体は成功扱い)
                 if (_settings.MaxGenerations > 0 || _settings.RetentionDays > 0)

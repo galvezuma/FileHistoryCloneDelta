@@ -47,7 +47,7 @@
             buttonClose.Name = "buttonClose";
             buttonClose.Size = new System.Drawing.Size(78, 24);
             buttonClose.TabIndex = 0;
-            buttonClose.Text = "閉じる";
+            buttonClose.Text = Strings.Get("Cleanup_ButtonClose");
             buttonClose.UseVisualStyleBackColor = true;
             buttonClose.Click += buttonClose_Click;
             // 
@@ -59,7 +59,7 @@
             label1.Name = "label1";
             label1.Size = new System.Drawing.Size(100, 15);
             label1.TabIndex = 1;
-            label1.Text = "スキャンファイル数：";
+            label1.Text = Strings.Get("Cleanup_ScannedFiles");
             // 
             // ScanCountTextBox
             // 
@@ -85,7 +85,7 @@
             buttonStartStop.Name = "buttonStartStop";
             buttonStartStop.Size = new System.Drawing.Size(75, 23);
             buttonStartStop.TabIndex = 6;
-            buttonStartStop.Text = "削除";
+            buttonStartStop.Text = Strings.Get("Cleanup_ButtonStart");
             buttonStartStop.UseVisualStyleBackColor = true;
             buttonStartStop.Click += buttonStartStop_Click;
             // 
@@ -115,7 +115,7 @@
             label2.Name = "label2";
             label2.Size = new System.Drawing.Size(89, 15);
             label2.TabIndex = 8;
-            label2.Text = "削除ファイル数：";
+            label2.Text = Strings.Get("Cleanup_DeletedFiles");
             //
             // labelNote
             //
@@ -127,7 +127,7 @@
             labelNote.Name = "labelNote";
             labelNote.Size = new System.Drawing.Size(100, 15);
             labelNote.TabIndex = 10;
-            labelNote.Text = "注意書き";
+            labelNote.Text = Strings.Get("Cleanup_TemporaryNote");
             //
             // CleanupForm
             //
@@ -148,7 +148,7 @@
             Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
             Margin = new System.Windows.Forms.Padding(2);
             Name = "CleanupForm";
-            Text = "ファイル削除";
+            Text = Strings.Get("Cleanup_Title");
             ResumeLayout(false);
             PerformLayout();
         }

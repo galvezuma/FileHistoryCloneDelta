@@ -34,6 +34,18 @@ namespace FileHistory
         /// </summary>
         public int MaxGenerations { get; set; }
         /// <summary>
+        /// Máximo número de deltas que se aplican sobre un checkout antes de forzar un nuevo checkout
+        /// </summary>
+        public int MaxDeltasBeforeCheckout { get; set; } = 10;
+        /// <summary>
+        /// Umbral (porcentaje) de tamaño del delta respecto al fichero original por encima del cual se crea un checkout
+        /// </summary>
+        public double DeltaSizeThresholdPercent { get; set; } = 50.0;
+        /// <summary>
+        /// Permitir fallback a GZip si Octodiff falla (true) o fallar en su lugar (false)
+        /// </summary>
+        public bool AllowOctodiffFallback { get; set; } = true;
+        /// <summary>
         /// バックアップ保持日数。0以下なら無制限（最新世代は日数に関わらず常に保持）
         /// </summary>
         public double RetentionDays { get; set; }
