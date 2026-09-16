@@ -191,6 +191,15 @@
   <data name="Settings_RestartPrompt" xml:space="preserve">
     <value>設定を保存しました。変更を反映するため FileHistoryClone を今すぐ再起動しますか?</value>
   </data>
+  <data name="Settings_LangEnglish" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="Settings_LangJapanese" xml:space="preserve">
+    <value>日本語</value>
+  </data>
+  <data name="Settings_LangSpanish" xml:space="preserve">
+    <value>スペイン語</value>
+  </data>
   <data name="MainForm_Title" xml:space="preserve">
     <value>FileHistoryClone ファイル復元</value>
   </data>

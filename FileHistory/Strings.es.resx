@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+	<value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+	<value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+	<value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+	<value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Tray_Open" xml:space="preserve">
+	<value>&amp;Abrir</value>
+  </data>
+  <data name="Tray_Exit" xml:space="preserve">
+	<value>&amp;Salir</value>
+  </data>
+  <data name="Tray_AutoStart" xml:space="preserve">
+	<value>Iniciar con &amp;Windows</value>
+  </data>
+  <data name="Tray_FirstRunNotice" xml:space="preserve">
+	<value>Copia de seguridad iniciada. Carpetas protegidas: {0}</value>
+  </data>
+  <data name="Tray_AlreadyRunning" xml:space="preserve">
+	<value>FileHistoryClone ya se está ejecutando.</value>
+  </data>
+  <data name="Common_Error" xml:space="preserve">
+	<value>Error</value>
+  </data>
+  <data name="Settings_Title" xml:space="preserve">
+	<value>Configuración de FileHistoryClone</value>
+  </data>
+  <data name="Settings_BackupDest" xml:space="preserve">
+	<value>Dónde guardar las copias de seguridad</value>
+  </data>
+  <data name="Settings_BackupDestHint" xml:space="preserve">
+	<value>Las copias de seguridad de tus archivos se guardan en esta carpeta. Si es posible, elige un disco diferente al de los originales.</value>
+  </data>
+  <data name="Settings_ProtectedFoldersHint" xml:space="preserve">
+	<value>Una carpeta por línea: puedes escribir o editar rutas directamente. Todo su contenido (incluyendo subcarpetas) se respalda automáticamente.</value>
+  </data>
+  <data name="Settings_TimingHint" xml:space="preserve">
+	<value>Los valores por defecto funcionan para la mayoría de usuarios. Pasa el ratón sobre un elemento para ver su descripción.</value>
+  </data>
+  <data name="Settings_RetentionHint" xml:space="preserve">
+	<value>Limita cuánto historial de copias se mantiene; las copias antiguas se limpian automáticamente en segundo plano. Deja todo a 0 para conservarlo todo indefinidamente.</value>
+  </data>
+  <data name="Settings_Tip_BackupDir" xml:space="preserve">
+	<value>Carpeta donde se guardan las copias de seguridad.
+Se pueden usar variables de entorno como %USERPROFILE%.
+Por defecto: %USERPROFILE%\FileHistoryCloneBackup</value>
+  </data>
+  <data name="Settings_Tip_IncludeList" xml:space="preserve">
+	<value>Carpetas a vigilar y respaldar (incluye subcarpetas), una por línea.
+Escribe o edita rutas directamente, o usa el botón Añadir.
+Añade al menos una carpeta que quieras proteger, p.ej. Documentos.</value>
+  </data>
+  <data name="Settings_Tip_Exclude" xml:space="preserve">
+	<value>Los archivos y carpetas que coincidan con cualquier patrón aquí no se respaldarán.
+Se permiten comodines * y ? (p.ej. *.tmp, node_modules).
+Empieza una línea con ! para hacer una excepción (siempre respaldar), o con # para comentarla.</value>
+  </data>
+  <data name="Settings_Tip_DefaultInterval" xml:space="preserve">
+	<value>Incluso si un archivo cambia muchas veces, se guarda como copia como máximo una vez cada este número de segundos.
+Menor = más versiones conservadas, más espacio en disco usado.
+Por defecto: 3600 (1 hora)</value>
+  </data>
+  <data name="Settings_Tip_MaxGenerations" xml:space="preserve">
+	<value>Número de versiones pasadas que se mantienen por archivo; las versiones más antiguas se eliminan.
+0 = conservar todas las versiones.
+Por defecto: 0</value>
+  </data>
+  <data name="Settings_Tip_RetentionDays" xml:space="preserve">
+	<value>Se eliminan las copias más antiguas que este número de días.
+0 = no eliminar por antigüedad.
+Por defecto: 0</value>
+  </data>
+  <data name="Settings_Tip_Language" xml:space="preserve">
+	<value>Idioma de las ventanas y menús de la aplicación.
+Se aplicará la próxima vez que se inicie FileHistoryClone.</value>
+  </data>
+  <data name="Settings_OK" xml:space="preserve">
+	<value>Aceptar</value>
+  </data>
+  <data name="Settings_PerFolder" xml:space="preserve">
+	<value>Por carpeta...</value>
+  </data>
+  <data name="Settings_PerFolderTitle" xml:space="preserve">
+	<value>Intervalo de copia por carpeta</value>
+  </data>
+  <data name="Settings_PerFolderHint" xml:space="preserve">
+	<value>Establece un intervalo mínimo de copia por carpeta protegida (segundos). Deja en blanco para usar el valor por defecto.</value>
+  </data>
+  <data name="Settings_PerFolderColFolder" xml:space="preserve">
+	<value>Carpeta</value>
+  </data>
+  <data name="Settings_PerFolderColInterval" xml:space="preserve">
+	<value>Intervalo (segundos)</value>
+  </data>
+  <data name="Settings_PerFolderInvalid" xml:space="preserve">
+	<value>El intervalo debe estar vacío o ser un número mayor o igual a 0.</value>
+  </data>
+  <data name="Settings_Tip_PerFolder" xml:space="preserve">
+	<value>Sobrescribe el intervalo de copia mínimo para carpetas protegidas específicas.
+Las carpetas sin valor usan el valor por defecto a la izquierda.</value>
+  </data>
+  <data name="MainForm_MenuTools" xml:space="preserve">
+	<value>&amp;Herramientas</value>
+  </data>
+  <data name="MainForm_MenuSettings" xml:space="preserve">
+	<value>&amp;Configuración...</value>
+  </data>
+  <data name="MainForm_MenuOpenConfig" xml:space="preserve">
+	<value>&amp;Abrir ubicación del archivo de configuración</value>
+  </data>
+  <data name="MainForm_MenuHelp" xml:space="preserve">
+	<value>&amp;Ayuda</value>
+  </data>
+  <data name="MainForm_MenuAbout" xml:space="preserve">
+	<value>&amp;Acerca de...</value>
+  </data>
+  <data name="MainForm_AboutTitle" xml:space="preserve">
+	<value>Acerca de</value>
+  </data>
+  <data name="MainForm_AboutText" xml:space="preserve">
+	<value>{0} versión {1}
+Archivo de configuración: {2}</value>
+  </data>
+  <data name="Cleanup_TemporaryNote" xml:space="preserve">
+	<value>Esta limpieza es una operación puntual. Para reducir el tamaño permanentemente, configura la política de retención (máx. generaciones / días) en la ventana de Configuración.</value>
+  </data>
+  <data name="Settings_Browse" xml:space="preserve">
+	<value>Examinar...</value>
+  </data>
+  <data name="Settings_ProtectedFolders" xml:space="preserve">
+	<value>Carpetas a proteger</value>
+  </data>
+  <data name="Settings_Add" xml:space="preserve">
+	<value>Añadir...</value>
+  </data>
+  <data name="Settings_Remove" xml:space="preserve">
+	<value>Eliminar</value>
+  </data>
+  <data name="Settings_Exclusions" xml:space="preserve">
+	<value>Exclusiones (una patrón por línea)</value>
+  </data>
+  <data name="Settings_ExclusionsHint" xml:space="preserve">
+	<value>p.ej. .git, node_modules, *.tmp, C:\Users\me\AppData, !important.log</value>
+  </data>
+  <data name="Settings_Timing" xml:space="preserve">
+	<value>Temporización</value>
+  </data>
+  <data name="Settings_DefaultInterval" xml:space="preserve">
+	<value>Segundos mínimos entre copias del mismo archivo:</value>
+  </data>
+  <data name="Settings_Retention" xml:space="preserve">
+	<value>Retención (0 = conservar todo)</value>
+  </data>
+  <data name="Settings_MaxGenerations" xml:space="preserve">
+	<value>Número máximo de generaciones por archivo:</value>
+  </data>
+  <data name="Settings_RetentionDays" xml:space="preserve">
+	<value>Eliminar copias más antiguas que (días):</value>
+  </data>
+  <data name="Settings_Language" xml:space="preserve">
+	<value>Idioma</value>
+  </data>
+  <data name="Settings_UiLanguage" xml:space="preserve">
+	<value>Idioma de la interfaz:</value>
+  </data>
+  <data name="Settings_LangAuto" xml:space="preserve">
+	<value>Automático (seguir Windows)</value>
+  </data>
+  <data name="Settings_Save" xml:space="preserve">
+	<value>Guardar</value>
+  </data>
+  <data name="Settings_Cancel" xml:space="preserve">
+	<value>Cancelar</value>
+  </data>
+  <data name="Settings_SelectFolder" xml:space="preserve">
+	<value>Seleccionar carpeta</value>
+  </data>
+  <data name="Settings_NeedBackupDir" xml:space="preserve">
+	<value>Por favor, selecciona una carpeta de destino para las copias de seguridad.</value>
+  </data>
+  <data name="Settings_NeedIncludeDir" xml:space="preserve">
+	<value>Añade al menos una carpeta a proteger.</value>
+  </data>
+  <data name="Settings_RestartPrompt" xml:space="preserve">
+	<value>Se han guardado los ajustes. ¿Deseas reiniciar FileHistoryClone ahora para aplicar los cambios?</value>
+  </data>
+	<data name="Settings_LangEnglish" xml:space="preserve">
+	<value>English</value>
+  </data>
+  <data name="Settings_LangJapanese" xml:space="preserve">
+	<value>日本語</value>
+  </data>
+  <data name="Settings_LangSpanish" xml:space="preserve">
+	<value>Español</value>
+  </data>
+  <data name="MainForm_Title" xml:space="preserve">
+	<value>FileHistoryClone</value>
+  </data>
+  <data name="MainForm_BackedUpFileCount" xml:space="preserve">
+	<value>Archivos respaldados: {0}</value>
+  </data>
+  <data name="MainForm_CrawledFileCount" xml:space="preserve">
+	<value>Archivos analizados: {0}</value>
+  </data>
+  <data name="MainForm_ColBackupTime" xml:space="preserve">
+	<value>Hora de copia</value>
+  </data>
+  <data name="MainForm_ColSize" xml:space="preserve">
+	<value>Tamaño</value>
+  </data>
+  <data name="MainForm_ColLastWrite" xml:space="preserve">
+	<value>Última modificación</value>
+  </data>
+  <data name="MainForm_FileNotFound" xml:space="preserve">
+	<value>Archivo no encontrado</value>
+  </data>
+  <data name="MainForm_OverwriteFile" xml:space="preserve">
+	<value>¿Sobrescribir el archivo existente?</value>
+  </data>
+  <data name="MainForm_OverwriteTitle" xml:space="preserve">
+	<value>Sobrescribir archivo</value>
+  </data>
+  <data name="MainForm_SelectRestoreFolder" xml:space="preserve">
+	<value>Selecciona la carpeta de restauración</value>
+  </data>
+  <data name="MainForm_DirectoryNotFound" xml:space="preserve">
+	<value>Directorio no encontrado</value>
+  </data>
+  <data name="Cleanup_ButtonClose" xml:space="preserve">
+	<value>Cerrar</value>
+  </data>
+  <data name="Cleanup_ButtonStart" xml:space="preserve">
+	<value>Iniciar</value>
+  </data>
+  <data name="Cleanup_ButtonStop" xml:space="preserve">
+	<value>Detener</value>
+  </data>
+  <data name="Cleanup_ModeKeepAllLatest" xml:space="preserve">
+	<value>Mantener la última de todos los archivos</value>
+  </data>
+  <data name="Cleanup_ModeKeepExistingLatest" xml:space="preserve">
+	<value>Mantener la última de los archivos existentes</value>
+  </data>
+  <data name="Settings_AllowOctodiffFallback" xml:space="preserve">
+	<value>Permitir fallback a GZip si Octodiff falla</value>
+  </data>
+  <!-- Add any remaining keys as untranslated fallback to original English if needed -->
+</root>

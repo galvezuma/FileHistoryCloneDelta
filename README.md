@@ -55,6 +55,11 @@ FileHistoryClone is an attempt to keep that idea alive as an independent open-so
 - **Catalog database** — file/generation metadata is tracked in an embedded [LiteDB](https://www.litedb.org/) database.
 - **Restore UI** — browse backed-up folders in a tree, pick any generation of a file, and restore files or whole directories (timestamps are preserved).
 - **Retention policy** — optionally cap generations per file (`MaxGenerations`) and/or delete backups older than N days (`RetentionDays`). The newest generation is always kept.
+- **Delta backups (.fhc)** — optional delta-storage format that stores either full "checkout" snapshots or binary "delta" packages in a ZIP container with manifest (manifest.json) and payload (payload.bin). Deltas are applied on restore by reconstructing a checkout and applying dependent deltas in order.
+- **Delta service (Octodiff)** — integrated Octodiff-based delta generator and applier (with optional GZip fallback). The service exposes CreateDeltaAsync, ApplyDeltaAsync and ComputeSha256Async.
+- **Atomic retention deletion** — RetentionWorker moves candidate backup files to a temporary .trash folder and only removes DB entries after files are moved. If a DB deletion fails, moved files are restored (rollback) to avoid inconsistency.
+- **Avoid orphan deltas** — RetentionWorker uses attribute Type and BaseAttributeId when pruning so it never deletes a checkout while dependent deltas remain; it deletes chains (checkout + deltas) atomically when all elements are eligible.
+- **Cross-volume safe moves** — when moving files to .trash, a cross-volume File.Move fallback to copy+delete is used.
 - **Manual cleanup** — one-click cleanup modes: "keep only the latest of all files" / "keep only the latest of existing files".
 - **Flexible filtering** — per-directory backup intervals, glob-style exclude patterns (`.git`, `*.tmp`, `C:\Users\me\AppData`, ...), re-include exceptions (`!important.log`), and environment-variable expansion (`%USERPROFILE%\Documents`) in all configured paths.
 - **Localized UI** — English and Japanese included; follows the OS language or can be forced via the `Language` setting.
@@ -63,6 +68,19 @@ FileHistoryClone is an attempt to keep that idea alive as an independent open-so
 
 - Windows 10/11
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (or newer) to build
+
+## Developer additions in this branch
+
+This feature branch extends the project with delta backups and stronger retention logic. Key additions:
+
+- FileHistory/DeltaService.cs + DeltaServiceImpl.cs: IDeltaService contract and Octodiff-based implementation.
+- FileHistory/FhcPackage.cs: utilities to create/extract .fhc packages (manifest.json + payload.bin).
+- Backup DB schema extended (AttributeDbEntry) with fields: Type, BaseAttributeId, Checksum (SHA-256), StoredFileName, DeltaIndex, CreatedAt.
+- BackupScheduler updated to create .fhc packages and record extended metadata in DB.
+- RetentionWorker updated to avoid orphan deltas, perform atomic deletions (move-to-trash + DB deletion + rollback) and cross-volume-safe moves.
+- Tests: new integration and unit tests covering delta creation/application, reconstruction, FHC roundtrip, retention scenarios, rollback behavior and SHA-256 validation.
+
+See ChangeLog.md for a chronological list of changes and migration notes.
 
 ## Using the tray icon
 

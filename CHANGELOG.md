@@ -23,6 +23,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The restore folder picker now starts at the file's (or directory's) original location instead of the default folder.
 - The installer could hang forever on systems where the WMI service is not running (it used `taskkill` to stop a running instance; now uses PowerShell `Stop-Process`).
 
+### Unreleased (feature/delta-backups)
+
+- Delta backups (.fhc) container: ZIP with manifest.json (FhcMetadata) and payload.bin.
+- IDeltaService and Octodiff-based DeltaService implementation (CreateDeltaAsync, ApplyDeltaAsync, ComputeSha256Async) with optional GZip fallback.
+- BackupDb.AttributeDbEntry extended with: Type, BaseAttributeId, Checksum, StoredFileName, DeltaIndex, CreatedAt.
+- BackupScheduler updated to create .fhc packages and record extended metadata in DB.
+- RetentionWorker updated to avoid orphan deltas and perform atomic deletions (move-to-trash + DB deletion + rollback).
+- Cross-volume safe file moving: fallback to copy+delete when File.Move fails.
+- New tests: delta creation/application, reconstruction/sha256 validation, retention scenarios, rollback simulation, concurrency/shutdown test, and scheduler E2E.
+
 ## [1.0.0] - 2026-07-08
 
 Initial public release.
