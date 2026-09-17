@@ -390,8 +390,8 @@ namespace FileHistory
                 }
 
                 // コピー先の上書き確認
-                var destFileFullPath = Path.Combine(distDir, fileDbEntry.Name);
-                if (File.Exists(destFileFullPath))
+                var targetPath = Path.Combine(distDir, fileDbEntry.Name);
+                if (File.Exists(targetPath))
                 {
                     if (DialogResult.Yes != MessageBox.Show(Strings.Get("MainForm_OverwriteFile"), Strings.Get("MainForm_OverwriteTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning))
                     {
@@ -401,16 +401,16 @@ namespace FileHistory
                 }
 
                 // 書き込み
-                using (var outFs = File.Create(destFileFullPath))
+                using (var outFs = File.Create(targetPath))
                 {
                     if (restoredStream.CanSeek) restoredStream.Seek(0, SeekOrigin.Begin);
                     restoredStream.CopyTo(outFs);
                 }
 
                 // コピー先タイムスタンプ設定
-                File.SetCreationTime(destFileFullPath, attrDbEntry.CreationTime);
-                File.SetLastWriteTime(destFileFullPath, attrDbEntry.LastWriteTime);
-                File.SetLastAccessTime(destFileFullPath, attrDbEntry.LastAccessTime);
+                File.SetCreationTime(targetPath, attrDbEntry.CreationTime);
+                File.SetLastWriteTime(targetPath, attrDbEntry.LastWriteTime);
+                File.SetLastAccessTime(targetPath, attrDbEntry.LastAccessTime);
             }
             finally
             {

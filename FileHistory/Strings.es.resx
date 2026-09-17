@@ -129,6 +129,9 @@ Las carpetas sin valor usan el valor por defecto a la izquierda.</value>
 	<value>{0} versión {1}
 Archivo de configuración: {2}</value>
   </data>
+	<data name="MainForm_FileNotFoundWithPath" xml:space="preserve">
+	<value>Archivo de copia no encontrado: {0}</value>
+  </data>
   <data name="Cleanup_TemporaryNote" xml:space="preserve">
 	<value>Esta limpieza es una operación puntual. Para reducir el tamaño permanentemente, configura la política de retención (máx. generaciones / días) en la ventana de Configuración.</value>
   </data>
