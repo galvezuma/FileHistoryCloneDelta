@@ -281,12 +281,140 @@ namespace FileHistory
             }
 
             var backupFileFullPath = BackupDb.BackupFileName(_settings.DataDir, Path.Combine(backupFileDir, fileDbEntry.Name), attrDbEntry.BackupTime);
-            if (!File.Exists(backupFileFullPath))
+            Stream restoredStream = null;
+            try
             {
-                _logger.LogError("Restore failed - backup not found: {path}", backupFileFullPath);
-                // Mostrar ruta esperada para facilitar depuración
-                MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", backupFileFullPath), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
+                // Si el atributo apunta a un .fhc (StoredFileName), intentar reconstruir desde .fhc(s)
+                if (!string.IsNullOrEmpty(attrDbEntry.StoredFileName))
+                {
+                    var fhcPath = Path.Combine(_settings.DataDir, attrDbEntry.StoredFileName);
+                    if (!File.Exists(fhcPath))
+                    {
+                        _logger.LogError("Restore failed - stored .fhc not found: {path}", fhcPath);
+                        MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", fhcPath), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // Extraer paquete .fhc
+                    using var fhcFs = File.OpenRead(fhcPath);
+                    var (meta, payload) = FhcPackage.ExtractPackageAsync(fhcFs, CancellationToken.None).GetAwaiter().GetResult();
+                    if (meta.Type == "checkout")
+                    {
+                        // Copiar payload a MemoryStream para poder usarlo tras cerrar el archivo .fhc
+                        restoredStream = new MemoryStream();
+                        payload.CopyTo(restoredStream);
+                        restoredStream.Seek(0, SeekOrigin.Begin);
+                    }
+                    else if (meta.Type == "delta")
+                    {
+                        if (!attrDbEntry.BaseAttributeId.HasValue)
+                        {
+                            _logger.LogError("Delta attribute without BaseAttributeId: {id}", attrDbEntry.Id);
+                            MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        // Obtener atributos ordenados por tiempo y localizar el checkout base
+                        var attrs = _db.GetAttributes(fileDbEntry.Id).OrderBy(a => a.BackupTime).ToList();
+                        var baseAttr = attrs.FirstOrDefault(a => a.Id == attrDbEntry.BaseAttributeId.Value);
+                        if (baseAttr == null || string.IsNullOrEmpty(baseAttr.StoredFileName))
+                        {
+                            _logger.LogError("Base checkout not found or missing StoredFileName for attribute {id}", attrDbEntry.BaseAttributeId);
+                            MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        var baseFhc = Path.Combine(_settings.DataDir, baseAttr.StoredFileName);
+                        if (!File.Exists(baseFhc))
+                        {
+                            _logger.LogError("Restore failed - base .fhc not found: {path}", baseFhc);
+                            MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", baseFhc), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        // Extraer el checkout base y copiar a stream en memoria
+                        using var baseFs = File.OpenRead(baseFhc);
+                        var (baseMeta, basePayload) = FhcPackage.ExtractPackageAsync(baseFs, CancellationToken.None).GetAwaiter().GetResult();
+                        Stream current = new MemoryStream();
+                        basePayload.CopyTo(current);
+                        current.Seek(0, SeekOrigin.Begin);
+
+                        // Construir lista de deltas a aplicar (desde base hasta el attrDbEntry)
+                        var deltasToApply = attrs
+                            .Where(a => a.BaseAttributeId == baseAttr.Id && a.BackupTime >= baseAttr.BackupTime)
+                            .OrderBy(a => a.DeltaIndex)
+                            .ToList();
+
+                        var deltaService = new DeltaService(_loggerFactory.CreateLogger<DeltaService>(), _settings.AllowOctodiffFallback);
+                        try
+                        {
+                            foreach (var d in deltasToApply)
+                            {
+                                var dFhc = Path.Combine(_settings.DataDir, d.StoredFileName);
+                                if (!File.Exists(dFhc))
+                                {
+                                    _logger.LogError("Restore failed - delta .fhc not found: {path}", dFhc);
+                                    MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", dFhc), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    return;
+                                }
+
+                                using var dFs = File.OpenRead(dFhc);
+                                var (dMeta, dPayload) = FhcPackage.ExtractPackageAsync(dFs, CancellationToken.None).GetAwaiter().GetResult();
+                                var next = deltaService.ApplyDeltaAsync(current, dPayload, CancellationToken.None).GetAwaiter().GetResult();
+                                try { current.Dispose(); } catch { }
+                                current = next;
+                                if (d.Id == attrDbEntry.Id) break;
+                            }
+                        }
+                        finally
+                        {
+                            deltaService.Dispose();
+                        }
+
+                        restoredStream = new MemoryStream();
+                        current.CopyTo(restoredStream);
+                        restoredStream.Seek(0, SeekOrigin.Begin);
+                        try { current.Dispose(); } catch { }
+                    }
+                }
+                else
+                {
+                    // Fallback: copia directa de backups legacy en disco
+                    if (!File.Exists(backupFileFullPath))
+                    {
+                        _logger.LogError("Restore failed - backup not found: {path}", backupFileFullPath);
+                        MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", backupFileFullPath), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                    restoredStream = File.OpenRead(backupFileFullPath);
+                }
+
+                // コピー先の上書き確認
+                var destFileFullPath = Path.Combine(distDir, fileDbEntry.Name);
+                if (File.Exists(destFileFullPath))
+                {
+                    if (DialogResult.Yes != MessageBox.Show(Strings.Get("MainForm_OverwriteFile"), Strings.Get("MainForm_OverwriteTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning))
+                    {
+                        try { restoredStream?.Dispose(); } catch { }
+                        return;
+                    }
+                }
+
+                // 書き込み
+                using (var outFs = File.Create(destFileFullPath))
+                {
+                    if (restoredStream.CanSeek) restoredStream.Seek(0, SeekOrigin.Begin);
+                    restoredStream.CopyTo(outFs);
+                }
+
+                // コピー先タイムスタンプ設定
+                File.SetCreationTime(destFileFullPath, attrDbEntry.CreationTime);
+                File.SetLastWriteTime(destFileFullPath, attrDbEntry.LastWriteTime);
+                File.SetLastAccessTime(destFileFullPath, attrDbEntry.LastAccessTime);
+            }
+            finally
+            {
+                try { restoredStream?.Dispose(); } catch { }
             }
 
             // コピー先の上書き確認
