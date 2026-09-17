@@ -283,7 +283,9 @@ namespace FileHistory
             var backupFileFullPath = BackupDb.BackupFileName(_settings.DataDir, Path.Combine(backupFileDir, fileDbEntry.Name), attrDbEntry.BackupTime);
             if (!File.Exists(backupFileFullPath))
             {
-                MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _logger.LogError("Restore failed - backup not found: {path}", backupFileFullPath);
+                // Mostrar ruta esperada para facilitar depuración
+                MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", backupFileFullPath), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -387,6 +389,11 @@ namespace FileHistory
 
                 try
                 {
+                    if (!File.Exists(backupFileFullPath))
+                    {
+                        _logger.LogWarning("RestoreDirectory: source backup missing: {path}", backupFileFullPath);
+                        continue;
+                    }
                     // ファイルコピー
                     File.Copy(backupFileFullPath, destFileFullPath);
                     // コピー先タイムスタンプ設定
@@ -394,8 +401,10 @@ namespace FileHistory
                     File.SetLastWriteTime(destFileFullPath, attr.LastWriteTime);
                     File.SetLastAccessTime(destFileFullPath, attr.LastAccessTime);
                 }
-                catch (Exception)
-                { }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "RestoreDirectory: failed copying {src} to {dst}", backupFileFullPath, destFileFullPath);
+                }
             }
 
             // ディレクトリコピー
