@@ -187,7 +187,7 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// ファイルを右クリックした際にコンテキストメニュー表示
+        /// Mostrar el menú contextual al hacer clic con el botón derecho sobre un archivo.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -209,7 +209,7 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// 選択した世代を一時ファイルにコピーして既定アプリで開く（プレビュー）
+        /// Copiar la versión seleccionada a un archivo temporal y abrirla con la aplicación predeterminada (vista previa).
         /// </summary>
         private void FileOpenTempMenuItem_Click(object sender, EventArgs e)
         {
@@ -223,23 +223,40 @@ namespace FileHistory
                     return;
                 }
 
-                var backupFileDir = _db.GetFileDir(fileDbEntry.Id);
-                var backupFileFullPath = BackupDb.BackupFileName(_settings.DataDir, Path.Combine(backupFileDir, fileDbEntry.Name), attrDbEntry.BackupTime);
-                if (!File.Exists(backupFileFullPath))
+                // Copiar y abrir el archivo en una carpeta temporal única,
+                // conservando su nombre de archivo original.
+                var tempDir = Path.Combine(Path.GetTempPath(), "FileHistoryClone", Guid.NewGuid().ToString("N"));
+
+                Directory.CreateDirectory(tempDir);
+
+                var originalFileName = Path.GetFileName(fileDbEntry.Name);
+                var tempFile = Path.Combine(tempDir, originalFileName);
+
+                // Funciona tanto para:
+                // - paquetes FHC: checkout o cadena de deltas;
+                // - backups legacy, si RestoreHelper conserva esa compatibilidad.
+                using (var reconstructed = RestoreHelper.ReconstructAttribute(_db, _settings, attrDbEntry, _loggerFactory))
+                using (var output = new FileStream(tempFile, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                 {
-                    MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
+                    reconstructed.CopyTo(output);
+                    output.Flush(flushToDisk: true);
+                }
+                // Establecerlo como de solo lectura para indicar que cualquier edición no se guardará ni se reflejará en el ar
+                try {
+                    var attributes = File.GetAttributes(tempFile);
+                    File.SetAttributes(tempFile, attributes | FileAttributes.ReadOnly);
+                } catch (Exception ex) {
+                    _logger.LogDebug(
+                        ex,
+                        "No se pudo establecer el atributo ReadOnly en {TempFile}.",
+                        tempFile);
                 }
 
-                // 元のファイル名のまま一意な一時フォルダにコピーして開く
-                var tempDir = Path.Combine(Path.GetTempPath(), "FileHistoryClone", Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(tempDir);
-                var tempFile = Path.Combine(tempDir, fileDbEntry.Name);
-                File.Copy(backupFileFullPath, tempFile, overwrite: true);
-                // 編集しても元に戻らないことを示すため読み取り専用にする
-                try { File.SetAttributes(tempFile, FileAttributes.ReadOnly); } catch { }
-
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tempFile) { UseShellExecute = true });
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo(tempFile)
+                    {
+                        UseShellExecute = true
+                    });
             }
             catch (Exception ex)
             {
@@ -249,7 +266,7 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// ファイルをリストア
+        /// Restaurar el archivo.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -257,185 +274,309 @@ namespace FileHistory
         {
             try
             {
-            // コピー元ファイル確認
-            var fileDbEntry = treeView.SelectedNode?.Tag as FileDbEntry;
-            var attrDbEntry = listView.SelectedItems.Count > 0 ? listView.SelectedItems[0].Tag as AttributeDbEntry : null;
-            if (fileDbEntry == null || attrDbEntry == null)
-            {
-                MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+                // Comprobar el archivo de origen.
+                var fileDbEntry = treeView.SelectedNode?.Tag as FileDbEntry;
+                var attrDbEntry = listView.SelectedItems.Count > 0
+                    ? listView.SelectedItems[0].Tag as AttributeDbEntry
+                    : null;
 
-            // 復元先ディレクトリ指定(初期フォルダは元ファイルのあった場所)
-            var backupFileDir = _db.GetFileDir(fileDbEntry.Id);
-            var distDir = "";
-            using (var fbd = new FolderBrowserDialog()
-            {
-                Description = Strings.Get("MainForm_SelectRestoreFolder"),
-                UseDescriptionForTitle = true,
-            })
-            {
-                if (Directory.Exists(backupFileDir)) fbd.SelectedPath = backupFileDir;
-                if (fbd.ShowDialog() != DialogResult.OK) return;
-                distDir = fbd.SelectedPath;
-            }
-
-            var backupFileFullPath = BackupDb.BackupFileName(_settings.DataDir, Path.Combine(backupFileDir, fileDbEntry.Name), attrDbEntry.BackupTime);
-            Stream restoredStream = null;
-            try
-            {
-                // Si el atributo apunta a un .fhc (StoredFileName), intentar reconstruir desde .fhc(s)
-                if (!string.IsNullOrEmpty(attrDbEntry.StoredFileName))
+                if (fileDbEntry == null || attrDbEntry == null)
                 {
-                    var fhcPath = Path.Combine(_settings.DataDir, attrDbEntry.StoredFileName);
-                    if (!File.Exists(fhcPath))
-                    {
-                        _logger.LogError("Restore failed - stored .fhc not found: {path}", fhcPath);
-                        MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", fhcPath), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
+                    MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
 
-                    // Extraer paquete .fhc
-                    using var fhcFs = File.OpenRead(fhcPath);
-                    var (meta, payload) = FhcPackage.ExtractPackageAsync(fhcFs, CancellationToken.None).GetAwaiter().GetResult();
-                    if (meta.Type == "checkout")
+                // Especificar el directorio de restauración.
+                // La carpeta inicial es la ubicación original del archivo.
+                var backupFileDir = _db.GetFileDir(fileDbEntry.Id);
+                string distDir;
+
+                using (var fbd = new FolderBrowserDialog
+                {
+                    Description = Strings.Get("MainForm_SelectRestoreFolder"),
+                    UseDescriptionForTitle = true
+                })
+                {
+                    if (Directory.Exists(backupFileDir)) fbd.SelectedPath = backupFileDir;
+                    if (fbd.ShowDialog() != DialogResult.OK) return;
+                    distDir = fbd.SelectedPath;
+                }
+
+                if (string.IsNullOrWhiteSpace(distDir)) return;
+
+                Directory.CreateDirectory(distDir);
+
+                // Path.GetFileName evita que un valor inesperado de Name pueda
+                // crear subdirectorios fuera del directorio elegido.
+                var targetFileName = Path.GetFileName(fileDbEntry.Name);
+
+                if (string.IsNullOrWhiteSpace(targetFileName))
+                {
+                    throw new InvalidDataException("El nombre del archivo a restaurar no es válido.");
+                }
+
+                var targetPath = Path.Combine(distDir, targetFileName);
+                Stream? restoredStream = null;
+                try
+                {
+                    if (!string.IsNullOrEmpty(attrDbEntry.StoredFileName))
                     {
-                        // Copiar payload a MemoryStream para poder usarlo tras cerrar el archivo .fhc
-                        restoredStream = new MemoryStream();
-                        payload.CopyTo(restoredStream);
-                        restoredStream.Seek(0, SeekOrigin.Begin);
-                    }
-                    else if (meta.Type == "delta")
-                    {
-                        if (!attrDbEntry.BaseAttributeId.HasValue)
+                        // Restauración desde el formato FHC actual.
+                        var fhcPath = Path.Combine(_settings.DataDir, attrDbEntry.StoredFileName);
+                        if (!File.Exists(fhcPath))
                         {
-                            _logger.LogError("Delta attribute without BaseAttributeId: {id}", attrDbEntry.Id);
-                            MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            _logger.LogError("Restore failed - stored .fhc not found: {Path}", fhcPath);
+
+                            MessageBox.Show(
+                                Strings.Format(
+                                    "MainForm_FileNotFoundWithPath",
+                                    fhcPath),
+                                Strings.Get("Common_Error"),
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+
                             return;
                         }
 
-                        // Obtener atributos ordenados por tiempo y localizar el checkout base
-                        var attrs = _db.GetAttributes(fileDbEntry.Id).OrderBy(a => a.BackupTime).ToList();
-                        var baseAttr = attrs.FirstOrDefault(a => a.Id == attrDbEntry.BaseAttributeId.Value);
-                        if (baseAttr == null || string.IsNullOrEmpty(baseAttr.StoredFileName))
+                        using var fhcFs = File.OpenRead(fhcPath);
+                        var (meta, payload) = FhcPackage.ExtractPackageAsync(fhcFs, CancellationToken.None).GetAwaiter().GetResult();
+                        using (payload)
                         {
-                            _logger.LogError("Base checkout not found or missing StoredFileName for attribute {id}", attrDbEntry.BaseAttributeId);
-                            MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            return;
-                        }
-
-                        var baseFhc = Path.Combine(_settings.DataDir, baseAttr.StoredFileName);
-                        if (!File.Exists(baseFhc))
-                        {
-                            _logger.LogError("Restore failed - base .fhc not found: {path}", baseFhc);
-                            MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", baseFhc), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            return;
-                        }
-
-                        // Extraer el checkout base y copiar a stream en memoria
-                        using var baseFs = File.OpenRead(baseFhc);
-                        var (baseMeta, basePayload) = FhcPackage.ExtractPackageAsync(baseFs, CancellationToken.None).GetAwaiter().GetResult();
-                        Stream current = new MemoryStream();
-                        basePayload.CopyTo(current);
-                        current.Seek(0, SeekOrigin.Begin);
-
-                        // Construir lista de deltas a aplicar (desde base hasta el attrDbEntry)
-                        var deltasToApply = attrs
-                            .Where(a => a.BaseAttributeId == baseAttr.Id && a.BackupTime >= baseAttr.BackupTime)
-                            .OrderBy(a => a.DeltaIndex)
-                            .ToList();
-
-                        var deltaService = new DeltaService(_loggerFactory.CreateLogger<DeltaService>(), _settings.AllowOctodiffFallback);
-                        try
-                        {
-                            foreach (var d in deltasToApply)
+                            if (string.Equals(
+                                meta.Type,
+                                "checkout",
+                                StringComparison.OrdinalIgnoreCase))
                             {
-                                var dFhc = Path.Combine(_settings.DataDir, d.StoredFileName);
-                                if (!File.Exists(dFhc))
+                                // En este diseño el payload de checkout es el
+                                // contenido original completo del archivo.
+                                restoredStream = new MemoryStream();
+                                if (payload.CanSeek) payload.Seek(0, SeekOrigin.Begin);
+
+                                payload.CopyTo(restoredStream);
+                                restoredStream.Seek(0, SeekOrigin.Begin);
+                            }
+                            else if (string.Equals(meta.Type, "delta", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!attrDbEntry.BaseAttributeId.HasValue)
                                 {
-                                    _logger.LogError("Restore failed - delta .fhc not found: {path}", dFhc);
-                                    MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", dFhc), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                                    return;
+                                    throw new InvalidDataException($"El delta {attrDbEntry.Id} no tiene BaseAttributeId.");
                                 }
 
-                                using var dFs = File.OpenRead(dFhc);
-                                var (dMeta, dPayload) = FhcPackage.ExtractPackageAsync(dFs, CancellationToken.None).GetAwaiter().GetResult();
-                                var next = deltaService.ApplyDeltaAsync(current, dPayload, CancellationToken.None).GetAwaiter().GetResult();
-                                try { current.Dispose(); } catch { }
-                                current = next;
-                                if (d.Id == attrDbEntry.Id) break;
+                                var attrs = _db.GetAttributes(fileDbEntry.Id).OrderBy(a => a.BackupTime).ToList();
+                                var baseAttr = attrs.FirstOrDefault(a => a.Id == attrDbEntry.BaseAttributeId.Value);
+                                if (baseAttr == null || string.IsNullOrEmpty(baseAttr.StoredFileName))
+                                {
+                                    throw new InvalidDataException($"No se encontró el checkout base " + $"para el delta {attrDbEntry.Id}.");
+                                }
+
+                                var baseFhcPath = Path.Combine(_settings.DataDir,baseAttr.StoredFileName);
+                                if (!File.Exists(baseFhcPath))
+                                {
+                                    throw new FileNotFoundException("No se encontró el paquete FHC del checkout base.", baseFhcPath);
+                                }
+
+                                Stream? current = null;
+
+                                try
+                                {
+                                    using (var baseFs = File.OpenRead(baseFhcPath))
+                                    {
+                                        var (baseMeta, basePayload) =
+                                            FhcPackage.ExtractPackageAsync(
+                                                baseFs,
+                                                CancellationToken.None)
+                                            .GetAwaiter()
+                                            .GetResult();
+
+                                        using (basePayload)
+                                        {
+                                            if (!string.Equals(baseMeta.Type, "checkout", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                throw new InvalidDataException($"El paquete base {baseFhcPath} " + $"no es un checkout; Type='{baseMeta.Type ?? "<null>"}'.");
+                                            }
+
+                                            current = new MemoryStream();
+
+                                            if (basePayload.CanSeek) basePayload.Seek(0, SeekOrigin.Begin);
+
+                                            basePayload.CopyTo(current);
+                                            current.Seek(0, SeekOrigin.Begin);
+                                        }
+                                    }
+
+                                    var deltasToApply = attrs
+                                        .Where(a =>
+                                            a.BaseAttributeId == baseAttr.Id &&
+                                            a.Type == "delta")
+                                        .OrderBy(a => a.DeltaIndex)
+                                        .ToList();
+
+                                    using var deltaService = new DeltaService(
+                                        _loggerFactory.CreateLogger<DeltaService>(),
+                                        _settings.AllowOctodiffFallback);
+
+                                    bool foundRequestedDelta = false;
+
+                                    foreach (var deltaAttr in deltasToApply)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(deltaAttr.StoredFileName))
+                                        {
+                                            throw new InvalidDataException($"El delta {deltaAttr.Id} no tiene StoredFileName.");
+                                        }
+
+                                        var deltaFhcPath = Path.Combine(_settings.DataDir, deltaAttr.StoredFileName);
+
+                                        if (!File.Exists(deltaFhcPath))
+                                        {
+                                            throw new FileNotFoundException("No se encontró el paquete FHC del delta.", deltaFhcPath);
+                                        }
+
+                                        using var deltaFs = File.OpenRead(deltaFhcPath);
+
+                                        var (deltaMeta, deltaPayload) =
+                                            FhcPackage.ExtractPackageAsync(
+                                                deltaFs,
+                                                CancellationToken.None)
+                                            .GetAwaiter()
+                                            .GetResult();
+
+                                        using (deltaPayload)
+                                        {
+                                            if (!string.Equals(deltaMeta.Type, "delta", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                throw new InvalidDataException($"El paquete {deltaFhcPath} " + $"no es un delta; Type='{deltaMeta.Type ?? "<null>"}'.");
+                                            }
+
+                                            if (deltaPayload.CanSeek) deltaPayload.Seek(0, SeekOrigin.Begin);
+
+                                            if (current.CanSeek) current.Seek(0, SeekOrigin.Begin);
+
+                                            var next = deltaService.ApplyDeltaAsync(
+                                                current,
+                                                deltaPayload,
+                                                CancellationToken.None)
+                                                .GetAwaiter()
+                                                .GetResult();
+
+                                            current.Dispose();
+                                            current = next;
+
+                                            if (current.CanSeek)
+                                                current.Seek(0, SeekOrigin.Begin);
+                                        }
+
+                                        if (deltaAttr.Id == attrDbEntry.Id)
+                                        {
+                                            foundRequestedDelta = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if (!foundRequestedDelta)
+                                    {
+                                        throw new InvalidDataException(
+                                            $"No se encontró el delta solicitado " +
+                                            $"{attrDbEntry.Id} dentro de la cadena " +
+                                            $"del checkout {baseAttr.Id}.");
+                                    }
+
+                                    restoredStream = current;
+                                    current = null;
+                                }
+                                finally
+                                {
+                                    current?.Dispose();
+                                }
+                            }
+                            else
+                            {
+                                throw new InvalidDataException(
+                                    $"Tipo FHC desconocido: '{meta.Type ?? "<null>"}'.");
                             }
                         }
-                        finally
+                    }
+                    else
+                    {
+                        // Compatibilidad con el formato legacy: backup como fichero
+                        // ordinario, fuera de un paquete FHC.
+                        var backupFileDir2 = _db.GetFileDir(fileDbEntry.Id);
+
+                        var backupFileFullPath = BackupDb.BackupFileName(
+                            _settings.DataDir,
+                            Path.Combine(backupFileDir2, fileDbEntry.Name),
+                            attrDbEntry.BackupTime);
+
+                        if (!File.Exists(backupFileFullPath))
                         {
-                            deltaService.Dispose();
+                            _logger.LogError(
+                                "Restore failed - legacy backup not found: {Path}",
+                                backupFileFullPath);
+
+                            MessageBox.Show(
+                                Strings.Format(
+                                    "MainForm_FileNotFoundWithPath",
+                                    backupFileFullPath),
+                                Strings.Get("Common_Error"),
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+
+                            return;
                         }
 
-                        restoredStream = new MemoryStream();
-                        current.CopyTo(restoredStream);
-                        restoredStream.Seek(0, SeekOrigin.Begin);
-                        try { current.Dispose(); } catch { }
+                        restoredStream = File.OpenRead(backupFileFullPath);
                     }
-                }
-                else
-                {
-                    // Fallback: copia directa de backups legacy en disco
-                    if (!File.Exists(backupFileFullPath))
-                    {
-                        _logger.LogError("Restore failed - backup not found: {path}", backupFileFullPath);
-                        MessageBox.Show(Strings.Format("MainForm_FileNotFoundWithPath", backupFileFullPath), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-                    restoredStream = File.OpenRead(backupFileFullPath);
-                }
 
-                // コピー先の上書き確認
-                var targetPath = Path.Combine(distDir, fileDbEntry.Name);
-                if (File.Exists(targetPath))
-                {
-                    if (DialogResult.Yes != MessageBox.Show(Strings.Get("MainForm_OverwriteFile"), Strings.Get("MainForm_OverwriteTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning))
+                    if (restoredStream == null)
                     {
-                        try { restoredStream?.Dispose(); } catch { }
-                        return;
+                        throw new InvalidDataException("No se pudo obtener un stream restaurado.");
                     }
-                }
 
-                // 書き込み
-                using (var outFs = File.Create(targetPath))
-                {
+                    // Confirmar la sobrescritura del archivo de destino.
+                    if (File.Exists(targetPath))
+                    {
+                        var overwriteResult = MessageBox.Show(
+                            Strings.Get("MainForm_OverwriteFile"),
+                            Strings.Get("MainForm_OverwriteTitle"),
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning);
+
+                        if (overwriteResult != DialogResult.Yes) return;
+                    }
+
+                    // Escribir el contenido restaurado.
                     if (restoredStream.CanSeek) restoredStream.Seek(0, SeekOrigin.Begin);
-                    restoredStream.CopyTo(outFs);
+
+                    using (var outFs = new FileStream(
+                        targetPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None))
+                    {
+                        restoredStream.CopyTo(outFs);
+                        outFs.Flush(flushToDisk: true);
+                    }
+
+                    // Establecer las marcas de tiempo del archivo de destino.
+                    File.SetCreationTime(targetPath, attrDbEntry.CreationTime);
+                    File.SetLastWriteTime(targetPath, attrDbEntry.LastWriteTime);
+                    File.SetLastAccessTime(targetPath, attrDbEntry.LastAccessTime);
                 }
-
-                // コピー先タイムスタンプ設定
-                File.SetCreationTime(targetPath, attrDbEntry.CreationTime);
-                File.SetLastWriteTime(targetPath, attrDbEntry.LastWriteTime);
-                File.SetLastAccessTime(targetPath, attrDbEntry.LastAccessTime);
-            }
-            finally
-            {
-                try { restoredStream?.Dispose(); } catch { }
-            }
-
-            // コピー先の上書き確認
-            var destFileFullPath = Path.Combine(distDir, fileDbEntry.Name);
-            if (File.Exists(destFileFullPath))
-            {
-                if (DialogResult.Yes != MessageBox.Show(Strings.Get("MainForm_OverwriteFile"), Strings.Get("MainForm_OverwriteTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning)) return;
-            }
-
-            // ファイルコピー
-            File.Copy(backupFileFullPath, destFileFullPath, overwrite: true);
-
-            // コピー先タイムスタンプ設定
-            File.SetCreationTime(destFileFullPath, attrDbEntry.CreationTime);
-            File.SetLastWriteTime(destFileFullPath, attrDbEntry.LastWriteTime);
-            File.SetLastAccessTime(destFileFullPath, attrDbEntry.LastAccessTime);
+                finally
+                {
+                    restoredStream?.Dispose();
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Exception caught in FileSubMenuItem_Click(): {ex}");
-                MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _logger.LogError(
+                    ex,
+                    "Exception caught in FileSubMenuItem_Click().");
+
+                MessageBox.Show(
+                    Strings.Get("MainForm_FileNotFound"),
+                    Strings.Get("Common_Error"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 

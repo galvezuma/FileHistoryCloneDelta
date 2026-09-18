@@ -64,10 +64,16 @@ namespace FileHistory
             using var archive = new ZipArchive(fhcStream, ZipArchiveMode.Read, leaveOpen: true);
 
             var manifestEntry = archive.GetEntry(ManifestName) ?? throw new InvalidDataException("manifest.json not found in .fhc package");
+
+            var testOptions = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+
             FhcMetadata metadata;
             using (var entryStream = manifestEntry.Open())
             {
-                metadata = await JsonSerializer.DeserializeAsync<FhcMetadata>(entryStream, cancellationToken: cancellationToken).ConfigureAwait(false)
+                metadata = await JsonSerializer.DeserializeAsync<FhcMetadata>(entryStream, testOptions, cancellationToken: cancellationToken).ConfigureAwait(false)
                     ?? throw new InvalidDataException("manifest.json could not be deserialized");
             }
 

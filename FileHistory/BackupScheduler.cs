@@ -369,6 +369,29 @@ namespace FileHistory
             }
         }
 
+        private static async Task<Stream> CreateCheckoutPayloadAsync(Stream source, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+
+            if (!source.CanRead)
+                throw new ArgumentException(
+                    "El stream de origen debe poder leerse.",
+                    nameof(source));
+
+            if (source.CanSeek)
+                source.Position = 0;
+
+            var payload = new MemoryStream();
+
+            await source.CopyToAsync(
+                payload,
+                bufferSize: 1024 * 1024,
+                cancellationToken).ConfigureAwait(false);
+
+            payload.Position = 0;
+            return payload;
+        }
+
         void CopyTask(string file, AttributeFileEntry fileAttr, FileDbEntry dbFile, CancellationToken token)
         {
             var now = DateTime.Now;
@@ -412,7 +435,7 @@ namespace FileHistory
                         Stream payload = null;
                         try
                         {
-                            payload = deltaService.CreateDeltaAsync(Stream.Null, infs, token).GetAwaiter().GetResult();
+                            payload = CreateCheckoutPayloadAsync(infs, token).GetAwaiter().GetResult();
                             if (payload.CanSeek) payload.Seek(0, SeekOrigin.Begin);
 
                             var metadata = new FhcMetadata
@@ -487,7 +510,7 @@ namespace FileHistory
                                 deltaStream.Dispose(); deltaStream = null;
                                 basePayload.Dispose(); basePayload = null;
                                 if (infs.CanSeek) infs.Seek(0, SeekOrigin.Begin);
-                                var payload = deltaService.CreateDeltaAsync(Stream.Null, infs, token).GetAwaiter().GetResult();
+                                var payload = CreateCheckoutPayloadAsync(infs, token).GetAwaiter().GetResult();
                                 if (payload.CanSeek) payload.Seek(0, SeekOrigin.Begin);
                                 var metadata = new FhcMetadata
                                 {
