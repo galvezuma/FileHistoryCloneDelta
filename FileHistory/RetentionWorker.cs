@@ -83,11 +83,11 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// 1ファイル分の保持ポリシー適用。最新世代は常に保持し、
-        /// MaxGenerations超過分およびRetentionDaysより古い世代を削除する。
-        /// バックアップ保存直後(BackupScheduler)と定期スキャンの両方から呼ばれる。
+        /// Aplica una política de retención basada en un límite de archivos individuales: siempre se conserva la última generación,
+        /// mientras que se eliminan las generaciones que superan MaxGenerations o que son más antiguas que RetentionDays.
+        /// Es invocado tanto por el proceso que sigue inmediatamente al almacenamiento de la copia de seguridad (BackupScheduler) como por el análisis periódico.
         /// </summary>
-        /// <returns>削除した世代数</returns>
+        /// <returns>Número de generaciones eliminadas</returns>
         public static int PruneFileGenerations(Settings settings, IBackupDb db, ILogger logger, FileDbEntry file, CancellationToken token)
         {
             var deleted = 0;
@@ -107,29 +107,42 @@ namespace FileHistory
                 if (expiredByAge || expiredByCount) canDelete[i] = true;
             }
 
-            // Second pass: ensure we don't delete a checkout while keeping dependent deltas
-            // For each checkout marked deletable, verify all dependent deltas are also marked deletable; otherwise skip deleting the checkout
-            for (int i = 0; i < attrs.Count; i++)
+            // Segunda pasada: preservar todas las dependencias de los deltas retenidos.
+            // Si se conserva un delta N, se debe conservar:
+            // - su checkout base;
+            // - todos los deltas de la misma cadena con DeltaIndex <= N.
+            foreach (var keptDelta in attrs.Where((a, i) =>
+                string.Equals(a.Type, "delta", StringComparison.OrdinalIgnoreCase) &&
+                !canDelete[i]))
             {
-                if (!canDelete[i]) continue;
-                var attr = attrs[i];
-                if (attr.Type == "checkout")
+                if (token.IsCancellationRequested) return deleted;
+
+                if (!keptDelta.BaseAttributeId.HasValue)
+                    throw new InvalidDataException( $"Delta {keptDelta.Id} sin BaseAttributeId.");
+
+                var baseId = keptDelta.BaseAttributeId.Value;
+
+                for (int i = 0; i < attrs.Count; i++)
                 {
-                    // find dependent deltas
-                    var deps = attrs.Where((a, idx) => a.BaseAttributeId == attr.Id && a.Type == "delta").ToList();
-                    if (deps.Count > 0)
-                    {
-                        // if any dependent delta is NOT deletable, we must not delete this checkout
-                        var anyNonDeletable = deps.Any(d => {
-                            var idx = attrs.FindIndex(x => x.Id == d.Id);
-                            return idx >= 0 && !canDelete[idx];
-                        });
-                        if (anyNonDeletable)
-                        {
-                            // skip deleting this checkout
-                            canDelete[i] = false;
-                        }
-                    }
+                    var candidate = attrs[i];
+
+                    var isBaseCheckout =
+                        candidate.Id == baseId &&
+                        string.Equals(
+                            candidate.Type,
+                            "checkout",
+                            StringComparison.OrdinalIgnoreCase);
+
+                    var isPredecessorDelta =
+                        candidate.BaseAttributeId == baseId &&
+                        string.Equals(
+                            candidate.Type,
+                            "delta",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        candidate.DeltaIndex <= keptDelta.DeltaIndex;
+
+                    if (isBaseCheckout || isPredecessorDelta)
+                        canDelete[i] = false;
                 }
             }
 

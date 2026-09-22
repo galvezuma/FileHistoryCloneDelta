@@ -78,6 +78,12 @@ Por defecto: 0</value>
 0 = no eliminar por antigüedad.
 Por defecto: 0</value>
   </data>
+  <data name="Settings_MaxDeltasBeforeCheckout" xml:space="preserve">
+	<value>Número máximo de deltas por copia simple:</value>
+  </data>
+  <data name="Settings_DeltaSizeThresholdPercent" xml:space="preserve">
+	<value>Tamaño máximo de un delta respecto al original (%):</value>
+  </data>	
   <data name="Settings_Tip_Language" xml:space="preserve">
 	<value>Idioma de las ventanas y menús de la aplicación.
 Se aplicará la próxima vez que se inicie FileHistoryClone.</value>

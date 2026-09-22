@@ -392,17 +392,25 @@ namespace FileHistory
             return payload;
         }
 
+        private static void SetBackupFileTimes(string backupPath, AttributeFileEntry sourceAttributes) {
+            File.SetCreationTime(backupPath, sourceAttributes.CreationTime);
+            File.SetLastWriteTime(backupPath, sourceAttributes.LastWriteTime);
+
+            // Opcional: puede no ser fiable según el filesystem/configuración del volumen.
+            File.SetLastAccessTime(backupPath, sourceAttributes.LastAccessTime);
+        }
+
         void CopyTask(string file, AttributeFileEntry fileAttr, FileDbEntry dbFile, CancellationToken token)
         {
             var now = DateTime.Now;
             _logger.LogInformation($"Backup {file}");
 
             var backupFile = BackupDb.BackupFileName(_settings.DataDir, file, now);
+            // Generar paquete .fhc usando DeltaService + FhcPackage
+            var fhcPath = Path.ChangeExtension(backupFile, ".fhc");
             Directory.CreateDirectory(Path.GetDirectoryName(backupFile));
             try
             {
-                // Generar paquete .fhc usando DeltaService + FhcPackage
-                var fhcPath = Path.ChangeExtension(backupFile, ".fhc");
                 Directory.CreateDirectory(Path.GetDirectoryName(fhcPath));
 
                 // Decide si crear checkout o delta
@@ -450,8 +458,10 @@ namespace FileHistory
                                 FormatVersion = 1,
                             };
 
-                            using var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                            FhcPackage.CreatePackageAsync(payload, metadata, outfs, token).GetAwaiter().GetResult();
+                            using (var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None)) {
+                                FhcPackage.CreatePackageAsync(payload, metadata, outfs, token).GetAwaiter().GetResult();
+                            }
+                            SetBackupFileTimes(fhcPath, fileAttr);
 
                             var storedRelative = Path.GetRelativePath(_settings.DataDir, fhcPath);
                             _db.InsertAttributeExtended(dbFile.Id, now, fileAttr.CreationTime, fileAttr.LastWriteTime, fileAttr.LastAccessTime, fileAttr.Size,
@@ -523,8 +533,11 @@ namespace FileHistory
                                     CreatedAt = DateTimeOffset.UtcNow,
                                     FormatVersion = 1,
                                 };
-                                using var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                                FhcPackage.CreatePackageAsync(payload, metadata, outfs, token).GetAwaiter().GetResult();
+                                using (var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None)) {
+                                    FhcPackage.CreatePackageAsync(payload, metadata, outfs, token).GetAwaiter().GetResult();
+                                }
+                                SetBackupFileTimes(fhcPath, fileAttr);
+
                                 var storedRelative = Path.GetRelativePath(_settings.DataDir, fhcPath);
                                 _db.InsertAttributeExtended(dbFile.Id, now, fileAttr.CreationTime, fileAttr.LastWriteTime, fileAttr.LastAccessTime, fileAttr.Size,
                                     metadata.Type, storedRelative, metadata.Sha256, null, metadata.DeltaIndex, metadata.CreatedAt);
@@ -545,8 +558,10 @@ namespace FileHistory
                                     FormatVersion = 1,
                                 };
 
-                                using var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None);
-                                FhcPackage.CreatePackageAsync(deltaStream, metadata, outfs, token).GetAwaiter().GetResult();
+                                using (var outfs = new FileStream(fhcPath, FileMode.Create, FileAccess.Write, FileShare.None)) {
+                                    FhcPackage.CreatePackageAsync(deltaStream, metadata, outfs, token).GetAwaiter().GetResult();
+                                }
+                                SetBackupFileTimes(fhcPath, fileAttr);
 
                                 var storedRelative = Path.GetRelativePath(_settings.DataDir, fhcPath);
                                 _db.InsertAttributeExtended(dbFile.Id, now, fileAttr.CreationTime, fileAttr.LastWriteTime, fileAttr.LastAccessTime, fileAttr.Size,
@@ -584,10 +599,10 @@ namespace FileHistory
                 else
                     _logger.LogError($"Exception caught in copy \"{file}\" to \"{backupFile}\": {ex}");
 
-                if (File.Exists(backupFile))
+                if (File.Exists(fhcPath))
                     try
                     {
-                        File.Delete(backupFile);
+                        File.Delete(fhcPath);
                     }
                     catch (Exception) { }
                 if (dbFile != null)

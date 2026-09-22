@@ -47,10 +47,10 @@ namespace FileHistory
                 signatureStream.Seek(0, SeekOrigin.Begin);
 
                 // 2) Crear delta comparando signature (SignatureReader) y newStream, escribiendo mediante BinaryDeltaWriter
-                var signatureReader = new SignatureReader(signatureStream, new NullProgressReporter());
                 var deltaStream = new MemoryStream();
-                var deltaWriter = new BinaryDeltaWriter(deltaStream);
                 var deltaBuilder = new DeltaBuilder();
+                var signatureReader = new SignatureReader(signatureStream, new NullProgressReporter());
+                var deltaWriter = new BinaryDeltaWriter(deltaStream);
                 deltaBuilder.BuildDelta(newStream, signatureReader, deltaWriter);
                 if (deltaStream.CanSeek) deltaStream.Seek(0, SeekOrigin.Begin);
                 return deltaStream;
@@ -83,8 +83,8 @@ namespace FileHistory
 
                 // Usar API directa de Octodiff para aplicar delta
                 var outMs = new MemoryStream();
-                var deltaReader = new BinaryDeltaReader(deltaStream, new NullProgressReporter());
                 var applier = new DeltaApplier();
+                var deltaReader = new BinaryDeltaReader(deltaStream, new NullProgressReporter());
                 applier.Apply(baseStream ?? Stream.Null, deltaReader, outMs);
                 if (outMs.CanSeek) outMs.Seek(0, SeekOrigin.Begin);
                 return outMs;

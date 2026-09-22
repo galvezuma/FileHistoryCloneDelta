@@ -166,10 +166,10 @@ namespace FileHistory
                 {
                     if (token.IsCancellationRequested) return;
 
-                    // ファイル単位の除外パターン(*.tmp など)
+                    // Patrones de exclusión por archivo (por ejemplo, *.tmp)
                     if (_settings.IsExcluded(file)) continue;
 
-                    // CrawlingSuspended > 0ならクローリング一時停止
+                    // CrawlingSuspended > 0 Entonces, pausar el rastreo
                     if (CrawlingSuspended > 0)
                     {
                         _logger?.LogInformation("Crawling {dir} Suspended", dir);
@@ -237,23 +237,15 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// Fileエントリ数の取得
+        /// Obtener el número de entradas de archivos
         /// </summary>
         public int FileCount()
         {
-            try
-            {
-                _logger?.LogTrace("Enter: {MethodName}", System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? "");
+            try {
                 return _checkedFiles.Count;
-            }
-            catch (Exception ex)
-            {
+            } catch (Exception ex) {
                 _logger?.LogError("Exception caught: {ex}", ex.ToString());
                 return 0;
-            }
-            finally
-            {
-                _logger?.LogTrace("Leave: {MethodName}", System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? "");
             }
         }
 
