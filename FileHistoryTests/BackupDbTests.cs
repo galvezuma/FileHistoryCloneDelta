@@ -34,7 +34,7 @@ namespace FileHistory.Tests
         {
             var dt = new DateTime(2026, 7, 8, 12, 34, 56);
             var result = BackupDb.BackupFileName(@"C:\Data", @"C:\Demo\Documents\report.txt", dt);
-            Assert.AreEqual(@"C:\Data\C\Demo\Documents\report(2026_07_08 12_34_56).txt", result);
+            Assert.AreEqual(@"C:\Data\C\Demo\Documents\report(2026_07_08 12_34_56).fhc", result);
         }
 
         [TestMethod()]

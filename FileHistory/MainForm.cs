@@ -141,26 +141,24 @@ namespace FileHistory
                 _logger.LogDebug($"FileCountUpdateTask End");
             });
 
-            // 「クローリング済みファイル数」更新タスク登録
+            // Registrar una tarea para actualizar el número de archivos ya rastreados.
             _fileCountCrawlingTask = Task.Run(async () =>
             {
-                while (!_cts.IsCancellationRequested)
-                {
-                    try
-                    {
-                        if (_crawler != null)
-                        {
+                var previous = -1;
+                while (!_cts.IsCancellationRequested) {
+                    try {
+                        if (_crawler != null) {
                             var count = _crawler.FileCount();
-                            SafeInvoke(() => { crawlingCount.Text = count.ToString("#,0"); });
+                            if (count != previous) 
+                            {
+                                previous = count;
+                                SafeInvoke(() => { crawlingCount.Text = count.ToString("#,0"); });
+                            }
                         }
                         await Task.Delay(1000, _cts.Token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
+                    } catch (OperationCanceledException) {
                         break;
-                    }
-                    catch (Exception ex)
-                    {
+                    } catch (Exception ex) {
                         if (!_cts.IsCancellationRequested)
                             _logger.LogError($"Exception caught in FileCountCrawlingTask: {ex}");
                         break;
@@ -187,7 +185,7 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// ファイルを右クリックした際にコンテキストメニュー表示
+        /// Mostrar el menú contextual al hacer clic con el botón derecho sobre un archivo.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -209,7 +207,7 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// 選択した世代を一時ファイルにコピーして既定アプリで開く（プレビュー）
+        /// Copiar la versión seleccionada a un archivo temporal y abrirla con la aplicación predeterminada (vista previa).
         /// </summary>
         private void FileOpenTempMenuItem_Click(object sender, EventArgs e)
         {
@@ -223,23 +221,40 @@ namespace FileHistory
                     return;
                 }
 
-                var backupFileDir = _db.GetFileDir(fileDbEntry.Id);
-                var backupFileFullPath = BackupDb.BackupFileName(_settings.DataDir, Path.Combine(backupFileDir, fileDbEntry.Name), attrDbEntry.BackupTime);
-                if (!File.Exists(backupFileFullPath))
+                // Copiar y abrir el archivo en una carpeta temporal única,
+                // conservando su nombre de archivo original.
+                var tempDir = Path.Combine(Path.GetTempPath(), "FileHistoryClone", Guid.NewGuid().ToString("N"));
+
+                Directory.CreateDirectory(tempDir);
+
+                var originalFileName = Path.GetFileName(fileDbEntry.Name);
+                var tempFile = Path.Combine(tempDir, originalFileName);
+
+                // Funciona tanto para:
+                // - paquetes FHC: checkout o cadena de deltas;
+                // - backups legacy, si RestoreHelper conserva esa compatibilidad.
+                using (var reconstructed = RestoreHelper.ReconstructAttribute(_db, _settings, attrDbEntry, _loggerFactory))
+                using (var output = new FileStream(tempFile, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                 {
-                    MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
+                    reconstructed.CopyTo(output);
+                    output.Flush(flushToDisk: true);
+                }
+                // Establecerlo como de solo lectura para indicar que cualquier edición no se guardará ni se reflejará en el ar
+                try {
+                    var attributes = File.GetAttributes(tempFile);
+                    File.SetAttributes(tempFile, attributes | FileAttributes.ReadOnly);
+                } catch (Exception ex) {
+                    _logger.LogDebug(
+                        ex,
+                        "No se pudo establecer el atributo ReadOnly en {TempFile}.",
+                        tempFile);
                 }
 
-                // 元のファイル名のまま一意な一時フォルダにコピーして開く
-                var tempDir = Path.Combine(Path.GetTempPath(), "FileHistoryClone", Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(tempDir);
-                var tempFile = Path.Combine(tempDir, fileDbEntry.Name);
-                File.Copy(backupFileFullPath, tempFile, overwrite: true);
-                // 編集しても元に戻らないことを示すため読み取り専用にする
-                try { File.SetAttributes(tempFile, FileAttributes.ReadOnly); } catch { }
-
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tempFile) { UseShellExecute = true });
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo(tempFile)
+                    {
+                        UseShellExecute = true
+                    });
             }
             catch (Exception ex)
             {
@@ -249,7 +264,7 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// ファイルをリストア
+        /// Restaurar el archivo.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -257,55 +272,88 @@ namespace FileHistory
         {
             try
             {
-            // コピー元ファイル確認
-            var fileDbEntry = treeView.SelectedNode?.Tag as FileDbEntry;
-            var attrDbEntry = listView.SelectedItems.Count > 0 ? listView.SelectedItems[0].Tag as AttributeDbEntry : null;
-            if (fileDbEntry == null || attrDbEntry == null)
-            {
-                MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+                // Comprobar el archivo de origen.
+                var fileDbEntry = treeView.SelectedNode?.Tag as FileDbEntry;
+                var attrDbEntry = listView.SelectedItems.Count > 0
+                    ? listView.SelectedItems[0].Tag as AttributeDbEntry
+                    : null;
 
-            // 復元先ディレクトリ指定(初期フォルダは元ファイルのあった場所)
-            var backupFileDir = _db.GetFileDir(fileDbEntry.Id);
-            var distDir = "";
-            using (var fbd = new FolderBrowserDialog()
-            {
-                Description = Strings.Get("MainForm_SelectRestoreFolder"),
-                UseDescriptionForTitle = true,
-            })
-            {
-                if (Directory.Exists(backupFileDir)) fbd.SelectedPath = backupFileDir;
-                if (fbd.ShowDialog() != DialogResult.OK) return;
-                distDir = fbd.SelectedPath;
-            }
+                if (fileDbEntry == null || attrDbEntry == null)
+                {
+                    MessageBox.Show(
+                        Strings.Get("MainForm_FileNotFound"),
+                        Strings.Get("Common_Error"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
 
-            var backupFileFullPath = BackupDb.BackupFileName(_settings.DataDir, Path.Combine(backupFileDir, fileDbEntry.Name), attrDbEntry.BackupTime);
-            if (!File.Exists(backupFileFullPath))
-            {
-                MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+                // Especificar el directorio de restauración.
+                // La carpeta inicial es la ubicación original del archivo.
+                var backupFileDir = _db.GetFileDir(fileDbEntry.Id);
+                string distDir;
 
-            // コピー先の上書き確認
-            var destFileFullPath = Path.Combine(distDir, fileDbEntry.Name);
-            if (File.Exists(destFileFullPath))
-            {
-                if (DialogResult.Yes != MessageBox.Show(Strings.Get("MainForm_OverwriteFile"), Strings.Get("MainForm_OverwriteTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning)) return;
-            }
+                using (var fbd = new FolderBrowserDialog
+                {
+                    Description = Strings.Get("MainForm_SelectRestoreFolder"),
+                    UseDescriptionForTitle = true
+                })
+                {
+                    if (Directory.Exists(backupFileDir)) fbd.SelectedPath = backupFileDir;
+                    if (fbd.ShowDialog() != DialogResult.OK) return;
+                    distDir = fbd.SelectedPath;
+                }
 
-            // ファイルコピー
-            File.Copy(backupFileFullPath, destFileFullPath, overwrite: true);
+                if (string.IsNullOrWhiteSpace(distDir)) return;
+                Directory.CreateDirectory(distDir);
 
-            // コピー先タイムスタンプ設定
-            File.SetCreationTime(destFileFullPath, attrDbEntry.CreationTime);
-            File.SetLastWriteTime(destFileFullPath, attrDbEntry.LastWriteTime);
-            File.SetLastAccessTime(destFileFullPath, attrDbEntry.LastAccessTime);
+                // Evita que fileDbEntry.Name pueda contener una ruta relativa.
+                var targetFileName = Path.GetFileName(fileDbEntry.Name);
+                if (string.IsNullOrWhiteSpace(targetFileName))
+                {
+                    throw new InvalidDataException("El nombre del archivo a restaurar no es válido.");
+                }
+
+                var targetPath = Path.Combine(distDir, targetFileName);
+
+                // Confirmar la sobrescritura del archivo de destino.
+                if (File.Exists(targetPath))
+                {
+                    var overwriteResult = MessageBox.Show(
+                        Strings.Get("MainForm_OverwriteFile"),
+                        Strings.Get("MainForm_OverwriteTitle"),
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (overwriteResult != DialogResult.Yes) return;
+                }
+
+                // ReconstructAttribute gestiona internamente:
+                // - checkout FHC;
+                // - cadena de deltas Octodiff;
+                // - backup legacy.
+                using (var restoredStream = RestoreHelper.ReconstructAttribute(_db, _settings, attrDbEntry, _loggerFactory))
+                using (var output = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    if (restoredStream.CanSeek) restoredStream.Seek(0, SeekOrigin.Begin);
+                    restoredStream.CopyTo(output);
+                    output.Flush(flushToDisk: true);
+                }
+
+                // Establecer las marcas de tiempo del archivo de destino.
+                File.SetCreationTime(targetPath, attrDbEntry.CreationTime);
+                File.SetLastWriteTime(targetPath, attrDbEntry.LastWriteTime);
+                File.SetLastAccessTime(targetPath, attrDbEntry.LastAccessTime);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Exception caught in FileSubMenuItem_Click(): {ex}");
-                MessageBox.Show(Strings.Get("MainForm_FileNotFound"), Strings.Get("Common_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _logger.LogError(ex, "Exception caught in FileSubMenuItem_Click().");
+
+                MessageBox.Show(
+                    Strings.Get("MainForm_FileNotFound"),
+                    Strings.Get("Common_Error"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
@@ -387,6 +435,11 @@ namespace FileHistory
 
                 try
                 {
+                    if (!File.Exists(backupFileFullPath))
+                    {
+                        _logger.LogWarning("RestoreDirectory: source backup missing: {path}", backupFileFullPath);
+                        continue;
+                    }
                     // ファイルコピー
                     File.Copy(backupFileFullPath, destFileFullPath);
                     // コピー先タイムスタンプ設定
@@ -394,8 +447,10 @@ namespace FileHistory
                     File.SetLastWriteTime(destFileFullPath, attr.LastWriteTime);
                     File.SetLastAccessTime(destFileFullPath, attr.LastAccessTime);
                 }
-                catch (Exception)
-                { }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "RestoreDirectory: failed copying {src} to {dst}", backupFileFullPath, destFileFullPath);
+                }
             }
 
             // ディレクトリコピー

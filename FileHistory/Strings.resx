@@ -129,6 +129,9 @@ Folders without a custom value use the default on the left.</value>
     <value>{0} version {1}
 Settings file: {2}</value>
   </data>
+  <data name="MainForm_FileNotFoundWithPath" xml:space="preserve">
+    <value>Backup file not found: {0}</value>
+  </data>
   <data name="Cleanup_TemporaryNote" xml:space="preserve">
     <value>This cleanup is a one-time operation. To keep backup size down permanently, set the retention policy (max generations / retention days) in the Settings window.</value>
   </data>

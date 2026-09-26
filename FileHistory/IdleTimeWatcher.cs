@@ -25,7 +25,7 @@ namespace FileHistory
             _crawler = crawler;
             _cts = new CancellationTokenSource();
 
-            // アイドル時にのみクローリング実行
+            // Ejecutar el rastreo solo cuando el equipo esté inactivo
             _idleWatcherTask = Task.Factory.StartNew(() =>
             {
                 bool idle = true;

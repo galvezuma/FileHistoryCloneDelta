@@ -179,12 +179,13 @@ namespace FileHistory.Tests
                 var backupShortDir = Path.Combine(backupBaseDir, "Watch", "Short");
                 var backupLongDir = Path.Combine(backupBaseDir, "Watch", "Long");
 
-                // まだバックアップは作成されない (BackupInterval 0.5秒経過前)
+                // Todavía no debe crearse backup antes de que transcurran 0,5 segundos del BackupInterval)
                 Task.Delay(300).Wait();
                 Assert.AreEqual(false, Directory.Exists(backupLongDir));
                 Assert.AreEqual(false, Directory.Exists(backupShortDir));
 
-                // Shortのディレクトリだけバックアップ作成 (ファイルコピー後にDB登録されるため両方待つ)
+                // Solo se crea el backup del directorio Short (como el registro en la base de datos se hace después
+                // de copiar el archivo, hay que esperar a que se completen ambas cosas)
                 Assert.IsTrue(WaitFor(() =>
                     Directory.Exists(backupShortDir) &&
                     Directory.EnumerateFiles(backupShortDir, "newfile*").Count() == 1 &&
@@ -198,7 +199,26 @@ namespace FileHistory.Tests
                 Assert.AreEqual(1, attributeDb.Count);
                 var backupShortFileName = BackupDb.BackupFileName(_settings.DataDir, origShortFileName, attributeDb.First().BackupTime);
 
-                // backupのタイムスタンプ = dbのタイムスタンプ
+                var attr = attributeDb.Single();
+
+                var actualBackupFiles = Directory.EnumerateFiles(
+                    backupShortDir,
+                    "newfile*",
+                    SearchOption.TopDirectoryOnly)
+                    .ToArray();
+
+                Assert.IsTrue(
+                    File.Exists(backupShortFileName),
+                    "BackupDb.BackupFileName() produced a path that does not exist." +
+                    Environment.NewLine +
+                    $"Computed path: '{backupShortFileName}'" +
+                    Environment.NewLine +
+                    $"BackupTime:    '{attr.BackupTime:O}'" +
+                    Environment.NewLine +
+                    $"Actual files:  {string.Join(", ", actualBackupFiles)}");
+
+
+                // Los timestamps del backup son iguales a los timestamps guardados en la base de datos
                 Assert.AreEqual(attributeDb.First().CreationTime, File.GetCreationTime(backupShortFileName));
                 Assert.AreEqual(attributeDb.First().LastWriteTime, File.GetLastWriteTime(backupShortFileName));
                 Assert.AreEqual(attributeDb.First().LastAccessTime, File.GetLastAccessTime(backupShortFileName));

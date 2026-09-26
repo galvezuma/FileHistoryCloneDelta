@@ -66,29 +66,10 @@ namespace FileHistoryTests
                 }
                 db.InsertAttributeExtended(fileEntry.Id, DateTime.Now.AddMinutes(-5), DateTime.Now.AddMinutes(-5), DateTime.Now.AddMinutes(-5), DateTime.Now.AddMinutes(-5), deltaMeta.OriginalSize, deltaMeta.Type, Path.GetRelativePath(settings.DataDir, deltaFhc), deltaMeta.Sha256, db.GetLatestCheckoutAttribute(fileEntry.Id).Id, deltaMeta.DeltaIndex, DateTimeOffset.UtcNow);
 
-                // Reconstruct by applying deltas to checkout
-                var checkoutAttr = db.GetLatestCheckoutAttribute(fileEntry.Id);
-                var checkoutPath = Path.Combine(settings.DataDir, checkoutAttr.StoredFileName);
-                using var checkoutFs = new FileStream(checkoutPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                var extracted = FileHistory.FhcPackage.ExtractPackageAsync(checkoutFs, CancellationToken.None).GetAwaiter().GetResult();
-                var baseMs = extracted.Payload;
-
-                var deltas = db.GetAttributes(fileEntry.Id).Where(a => a.Type == "delta" && a.BaseAttributeId == checkoutAttr.Id).OrderBy(a => a.DeltaIndex).ToList();
-                MemoryStream current = baseMs;
-                foreach (var d in deltas)
-                {
-                    var dPath = Path.Combine(settings.DataDir, d.StoredFileName);
-                    using var df = new FileStream(dPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    var ex = FileHistory.FhcPackage.ExtractPackageAsync(df, CancellationToken.None).GetAwaiter().GetResult();
-                    using var deltaMs = ex.Payload;
-                    var applied = deltaService.ApplyDeltaAsync(current, deltaMs, CancellationToken.None).GetAwaiter().GetResult();
-                    current.Dispose();
-                    current = applied as MemoryStream ?? new MemoryStream();
-                }
-
-                // Compute sha256 of reconstructed and of modified original
-                current.Seek(0, SeekOrigin.Begin);
-                var reconSha = deltaService.ComputeSha256Async(current).GetAwaiter().GetResult();
+                // Reconstruct using the new helper
+                var attrToReconstruct = db.GetAttributes(fileEntry.Id).OrderBy(a => a.BackupTime).Last();
+                using var reconstructed = FileHistory.RestoreHelper.ReconstructAttribute(db, settings, attrToReconstruct, loggerFactory);
+                var reconSha = deltaService.ComputeSha256Async(reconstructed).GetAwaiter().GetResult();
                 var modifiedSha = deltaService.ComputeSha256Async(new MemoryStream(modified)).GetAwaiter().GetResult();
 
                 Assert.AreEqual(modifiedSha, reconSha, "Reconstructed file must have same SHA256 as modified original");

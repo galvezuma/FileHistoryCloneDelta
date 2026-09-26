@@ -514,10 +514,35 @@ namespace FileHistory
         /// <param name="OriginalFullPath"></param>
         /// <param name="BackupTime"></param>
         /// <returns></returns>
-        public static string BackupFileName(string DataDir, string OriginalFullPath, DateTime BackupTime)
-        {
-            return Path.Combine(DataDir, OriginalFullPath.Split(':')[0], Path.GetDirectoryName(OriginalFullPath).Split(':')[1].Substring(1),
-                        $"{Path.GetFileNameWithoutExtension(OriginalFullPath)}({BackupTime:yyyy_MM_dd HH_mm_ss}){Path.GetExtension(OriginalFullPath)}");
+        public static string BackupFileName(
+            string dataDir,
+            string originalFullPath,
+            DateTime backupTime) {
+            const string backupExtension = ".fhc";
+
+            var drive = Path.GetPathRoot(originalFullPath)?
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .TrimEnd(':');
+
+            if (string.IsNullOrEmpty(drive))
+                throw new ArgumentException(
+                    "OriginalFullPath must be an absolute Windows path with a drive letter.",
+                    nameof(originalFullPath));
+
+            var relativeDirectory = Path.GetDirectoryName(originalFullPath)?
+                .Substring(Path.GetPathRoot(originalFullPath)!.Length)
+                ?? string.Empty;
+
+            var backupFileName =
+                $"{Path.GetFileNameWithoutExtension(originalFullPath)}" +
+                $"({backupTime:yyyy_MM_dd HH_mm_ss})" +
+                backupExtension;
+
+            return Path.Combine(
+                dataDir,
+                drive,
+                relativeDirectory,
+                backupFileName);
         }
 
         public string GetFileDir(int fileId)

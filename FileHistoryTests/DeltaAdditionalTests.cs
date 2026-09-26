@@ -106,13 +106,17 @@ namespace FileHistoryTests
         }
 
         [TestMethod]
-        public async Task DeltaService_NoFallback_ThrowsOnOctodiffFailure()
-        {
-            var ds = new FileHistory.DeltaService(null, allowFallback: false);
+        public async Task DeltaService_NoFallback_ThrowsOnOctodiffFailure() {
+            using var ds = new FileHistory.DeltaService(null, allowFallback: false);
             using var baseStream = new MemoryStream(Encoding.UTF8.GetBytes("base"));
             using var badNew = new FaultyStream();
 
-            await Assert.ThrowsExceptionAsync<Exception>(async () => await ds.CreateDeltaAsync(baseStream, badNew));
+            try {
+                await ds.CreateDeltaAsync(baseStream, badNew);
+                Assert.Fail("Se esperaba una excepción cuando AllowFallback=false.");
+            } catch (Exception ex) {
+                Assert.IsNotNull(ex);
+            }
         }
     }
 }

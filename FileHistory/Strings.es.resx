@@ -78,6 +78,12 @@ Por defecto: 0</value>
 0 = no eliminar por antigüedad.
 Por defecto: 0</value>
   </data>
+  <data name="Settings_MaxDeltasBeforeCheckout" xml:space="preserve">
+	<value>Número máximo de deltas por copia simple:</value>
+  </data>
+  <data name="Settings_DeltaSizeThresholdPercent" xml:space="preserve">
+	<value>Tamaño máximo de un delta respecto al original (%):</value>
+  </data>	
   <data name="Settings_Tip_Language" xml:space="preserve">
 	<value>Idioma de las ventanas y menús de la aplicación.
 Se aplicará la próxima vez que se inicie FileHistoryClone.</value>
@@ -128,6 +134,9 @@ Las carpetas sin valor usan el valor por defecto a la izquierda.</value>
   <data name="MainForm_AboutText" xml:space="preserve">
 	<value>{0} versión {1}
 Archivo de configuración: {2}</value>
+  </data>
+	<data name="MainForm_FileNotFoundWithPath" xml:space="preserve">
+	<value>Archivo de copia no encontrado: {0}</value>
   </data>
   <data name="Cleanup_TemporaryNote" xml:space="preserve">
 	<value>Esta limpieza es una operación puntual. Para reducir el tamaño permanentemente, configura la política de retención (máx. generaciones / días) en la ventana de Configuración.</value>

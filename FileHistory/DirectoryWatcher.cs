@@ -20,10 +20,10 @@ namespace FileHistory
             _backupScheduler = backupScheduler;
             _watchers = new List<FileSystemWatcher>();
 
-            // ファイル監視
-            foreach(var dir in _settings.CrawlingBaseDirs)
+            // Supervisión de archivos
+            foreach (var dir in _settings.CrawlingBaseDirs)
             {
-                // IncludeDirsにファイルパスや存在しないパスが混ざっていても落ちないようにスキップ
+                // Omitir las rutas de archivo y las rutas inexistentes incluidas en IncludeDirs para evitar errores
                 if (!Directory.Exists(dir))
                 {
                     _logger.LogWarning($"IncludeDir is not an existing directory, skipped: {dir}");
@@ -34,11 +34,11 @@ namespace FileHistory
                 {
                     var watcher = new FileSystemWatcher();
                     watcher.Path = dir;
-                    // LastAccessはノイズが多いため監視しない
+                    // No supervisar LastAccess, ya que genera demasiado ruido
                     watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size;
                     watcher.Filter = "";
                     watcher.IncludeSubdirectories = true;
-                    // 既定の8KBでは大量変更時にバッファオーバーフローするため最大値に拡大
+                    // Ampliar el búfer al valor máximo, ya que el tamaño predeterminado de 8 KB provoca desbordamientos cuando hay muchos cambios
                     watcher.InternalBufferSize = 64 * 1024;
 
                     watcher.Changed += new FileSystemEventHandler(FileChanged);
@@ -79,7 +79,7 @@ namespace FileHistory
                     _backupScheduler.Add(e.FullPath, null, null, SchedulePriority.High);
                     break;
                 case WatcherChangeTypes.Deleted:
-                    // 削除ファイルはバックアップ対象にならないためログのみ
+                    // Los archivos eliminados no se incluyen en la copia de seguridad, por lo que solo se registran en el log
                     _logger.LogDebug($"File Deleted : {e.FullPath}");
                     break;
             }
@@ -92,8 +92,8 @@ namespace FileHistory
         }
 
         /// <summary>
-        /// バッファオーバーフロー等の監視エラーから回復する
-        /// (取りこぼしたイベントは次回クロールで補足される)
+        /// Se recupera de errores de supervisión, como desbordamientos del búfer.
+        /// (Los eventos que se hayan perdido se recogerán en el próximo rastreo.)
         /// </summary>
         void WatcherError(object sender, ErrorEventArgs e)
         {
